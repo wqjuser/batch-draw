@@ -1,2 +1,2 @@
 # batch-draw
-批量文图脚本
+batch draw scripts
