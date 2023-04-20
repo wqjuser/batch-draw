@@ -494,7 +494,7 @@ class Script(scripts.Script):
         return "多重gif动画控制"
 
     def show(self, is_img2img):
-        return is_img2img
+        return not is_img2img
 
     def ui(self, is_img2img):
 
