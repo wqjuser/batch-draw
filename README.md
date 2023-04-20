@@ -1,2 +1,2 @@
-# batch-draw-i2i
-Sd WebUI 批量图生图脚本
+# batch-draw
+批量文图脚本
