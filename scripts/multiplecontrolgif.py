@@ -518,7 +518,7 @@ class Script(scripts.Script):
         with gr.Accordion(label="附加选项，根据需要使用", open=False):
             with gr.Column(variant='panel'):
                 use_individual_prompts = gr.Checkbox(
-                    label="5. 为每一帧选择一个提示词文件（非必选） ",
+                    label="5. 为每一帧选择一个提示词文件（非必选） 可以丰富人物表情，但是由于每一张的tag不同会引起视频的人物脸部不太统一",
                     value=False
                 )
                 prompts_folder = gr.Textbox(
