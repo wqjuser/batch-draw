@@ -532,7 +532,12 @@ class Script(scripts.Script):
                         print("安装过程：", run_pip("install rembg", "开始安装rembg"))
                         return gr.update(value="安装完成", visible=False)
 
+                    def change_btn_ui():
+                        return gr.update(value='安装中', interactive=False)
+
                     # 添加点击事件
+                    btn_install_rembg.click(change_btn_ui, inputs=None, outputs=[btn_install_rembg],
+                                            show_progress=True)
                     btn_install_rembg.click(install_rembg, inputs=None, outputs=[btn_install_rembg],
                                             show_progress=True)
 
