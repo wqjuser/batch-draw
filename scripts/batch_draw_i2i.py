@@ -1,21 +1,19 @@
-import modules.scripts as scripts
-import gradio as gr
-import random
+import copy
+import importlib.util
 import os
+import random
+import shlex
+import subprocess
+import sys
+import traceback
 
-import rembg
+import gradio as gr
 from PIL import Image, ImageSequence, ImageDraw, ImageFont
+
+import modules.scripts as scripts
 from modules import images
 from modules.processing import process_images
 from modules.shared import state
-import re
-from threading import Thread
-import traceback
-import subprocess
-import sys
-import importlib.util
-import shlex
-import copy
 
 
 def process_string_tag(tag):
@@ -100,7 +98,7 @@ def run_pip(args, desc=None):
     index_url = os.environ.get('INDEX_URL', "")
     python = sys.executable
     index_url_line = f' --index-url {index_url}' if index_url != '' else ''
-    return run(f'"{python}" -m pip {args} -i https://pypi.douban.com/simple', desc=f"Installing {desc}",
+    return run(f'"{python}" -m pip {args} -i https://pypi.douban.com/simple', desc=f"执行操作: {desc}",
                errdesc=f"Couldn't install {desc}")
 
 
@@ -141,6 +139,10 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
 
     gif = Image.open(inf)
     dura = gif.info['duration']
+
+    if rm_bg:
+        if is_installed("rembg"):
+            import rembg
 
     # 用户选择修改gif尺寸
     if resize_input:
@@ -261,33 +263,6 @@ def resize_gif(input_path, output_path, width, height):
         frames[0].save(output_path, save_all=True, append_images=frames[1:], duration=im.info['duration'], loop=0)
 
     return output_path
-
-
-# 安装rembg todo 待测试
-def install_rembg(btn_install_rembg):
-    if is_installed("rembg"):
-        print('已安装rembg无需重复安装')
-        return
-    print('进入安装rembg的方法')
-
-    def update_button_label(process_percentage):
-        downloaded, total = 0, 1
-        for line in iter(process_percentage.stdout.readline, b''):
-            line = line.decode('utf-8')
-            match = re.search(r'(\d+)/(\d+)', line)
-            if match:
-                downloaded, total = int(match.group(1)), int(match.group(2))
-            progress = (downloaded / total) * 100
-            btn_install_rembg.label = f"安装中... {progress:.2f}%"
-
-    def run_install():
-        cmd = ["pip", "install", "rembg"]
-        process_percentage = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        update_button_label(process_percentage)
-        process_percentage.communicate()
-        btn_install_rembg.label = "rembg 已安装"
-
-    Thread(target=run_install).start()
 
 
 # 为图片添加用户指定的背景图
@@ -512,7 +487,7 @@ class Script(scripts.Script):
                     value="")
                 max_frames = gr.Number(
                     label="4. 输入指定的 GIF 帧数 (运行到指定帧数后停止(不会大于GIF的总帧数)，用于用户测试生成图片的效果，最小1帧,测试完成后请输入一个很大的数保证能把GIF所有帧数操作完毕)",
-                    value=1000,
+                    value=666,
                     min=1
                 )
         with gr.Accordion(label="附加选项，根据需要使用", open=False):
@@ -535,7 +510,31 @@ class Script(scripts.Script):
                                             info="需要安装rembg，若未安装请点击下方按钮安装rembg")
                         save_or = gr.Checkbox(label="7. 是否保留原图",
                                               info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
-                    btn_install_rembg = gr.Button(value="安装 rembg").style(full_width=True)
+
+                    def check_rembg(rm_bg):
+                        if rm_bg:
+                            if is_installed('rembg'):
+                                print("rembg 已安装")
+                                return gr.update(visible=False, value='')
+                            else:
+                                return gr.update(visible=True, value='请点击安装rembg')
+                        else:
+                            return gr.update(visible=False, value='')
+
+                    btn_install_rembg = gr.Button(value="未安装rembg，请点击安装rembg", visible=False).style(
+                        full_width=True)
+                    rm_bg.change(check_rembg, inputs=[rm_bg], outputs=[btn_install_rembg])
+
+                    def install_rembg():
+                        if is_installed("rembg"):
+                            print('已安装rembg无需重复安装')
+                            return
+                        print("安装过程：", run_pip("install rembg", "开始安装rembg"))
+                        return gr.update(value="安装完成", visible=False)
+
+                    # 添加点击事件
+                    btn_install_rembg.click(install_rembg, inputs=None, outputs=[btn_install_rembg],
+                                            show_progress=False)
 
                     add_bg = gr.Checkbox(
                         label="为透明图片自定义背景图片",
@@ -546,9 +545,6 @@ class Script(scripts.Script):
                         lines=1, max_lines=2,
                         value=""
                     )
-
-                # 添加点击事件
-                btn_install_rembg.click(lambda: install_rembg(btn_install_rembg))
 
             with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
                 with gr.Column(variant='panel'):

@@ -3,7 +3,6 @@ import gradio as gr
 import random
 import os
 
-import rembg
 from PIL import Image, ImageSequence, ImageDraw, ImageFont
 from modules import images
 from modules.processing import process_images
