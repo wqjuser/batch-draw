@@ -534,7 +534,7 @@ class Script(scripts.Script):
 
                     # 添加点击事件
                     btn_install_rembg.click(install_rembg, inputs=None, outputs=[btn_install_rembg],
-                                            show_progress=False)
+                                            show_progress=True)
 
                     add_bg = gr.Checkbox(
                         label="为透明图片自定义背景图片",
