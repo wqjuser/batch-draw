@@ -533,7 +533,7 @@ class Script(scripts.Script):
                         return gr.update(value="安装完成", visible=False)
 
                     def change_btn_ui():
-                        return gr.update(value='安装中,请在控制台查看进度', interactive=False)
+                        return gr.update(value='安装中,请在控制台查看进度,安装完成按钮将会自动消失', interactive=False)
 
                     # 添加点击事件
                     btn_install_rembg.click(change_btn_ui, inputs=None, outputs=[btn_install_rembg],
