@@ -614,7 +614,7 @@ class Script(scripts.Script):
                                                                 value="")
                     with gr.Row():
                         with gr.Column(scale=1):
-                            custom_font = gr.Checkbox(label="水印字体", info="自定义水印字体")
+                            custom_font = gr.Checkbox(label="启用自定义水印字体", info="自定义水印字体")
                         with gr.Column(scale=7):
                             text_font_path = gr.Textbox(
                                 label="输入自定义水印字体路径(勾选左边自定义水印字体单选框以及功能9起效)",
