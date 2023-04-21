@@ -378,7 +378,12 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
             original_dir, original_filename = os.path.split(need_add_watermark_images[i][0])
 
         watermarked_path = os.path.join(original_dir, f"watermarked_{original_filename}")
-        watermarked_image.save(watermarked_path)
+        # 这样保存会没有任何生成图片的信息
+        # watermarked_image.save(watermarked_path)
+        # 试试这样保存序号会乱不
+        images.save_image(watermarked_image, original_dir, "watermarked",
+                          forced_filename=f"watermarked_{original_filename}",
+                          prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p)
         img1 = Image.open(watermarked_path)
         watered_images.append(img1)
     if int(text_watermark_target) == 2:
@@ -659,7 +664,7 @@ class Script(scripts.Script):
                 processed.images = [images.image_grid(processed_images_flattened,
                                                       rows=p.batch_size * p.n_iter)] + processed_images_flattened
         or_images = []
-        if (len(processed.images) == 1):
+        if len(processed.images) == 1:
             or_images.append(processed.images[0])
         else:
             for i, img in enumerate(processed.images):
