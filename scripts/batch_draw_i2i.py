@@ -15,6 +15,9 @@ import modules.scripts as scripts
 from modules import images
 from modules.processing import process_images
 from modules.shared import state
+import chardet
+
+
 
 
 def process_string_tag(tag):
@@ -255,7 +258,12 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
         if use_individual_prompts:
             if file_idx < len(prompt_files):
                 prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
-                with open(prompt_file, "r", encoding="utf-8") as f:
+                # 打开文件，获取文件编码
+                with open(prompt_file, "rb") as f:
+                    result = chardet.detect(f.read())
+                    file_encoding = result['encoding']
+                print("当前文件编码格式：", file_encoding)
+                with open(prompt_file, "r", encoding=file_encoding) as f:
                     individual_prompt = f.read().strip()
                 copy_p.prompt = f"{copy_p.prompt} {individual_prompt}"
                 file_idx += 1
