@@ -21,6 +21,7 @@ import requests
 import json
 import chardet
 
+
 def process_string_tag(tag):
     return tag
 
@@ -182,6 +183,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
 
         if file_idx < len(prompt_files):
             prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
+            print("文件是:", prompt_file)
             # 打开文件，获取文件编码
             with open(prompt_file, "rb") as f:
                 result = chardet.detect(f.read())
@@ -358,7 +360,6 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
 
 
 def baidu_translate(query, from_lang, to_lang, appid, secret_key):
-
     # Step1. 将请求参数中的 appid、翻译 query、随机数 salt、密钥的顺序拼接得到字符串 sign_str
     salt = random.randint(32768, 65536)
     sign_str = appid + query + str(salt) + secret_key
@@ -476,7 +477,8 @@ class Script(scripts.Script):
                     baidu_info = gr.HTML(
                         "<br><a href=https://fanyi-api.baidu.com/doc/11><font "
                         "color=blue>点击这里了解如何获取百度翻译的appid和key</font></a>")
-                    enable_translate = gr.Checkbox(label="4. 翻译提示词", info="启用百度翻译,目前仅仅设置了中文翻译为英文")
+                    enable_translate = gr.Checkbox(label="4. 翻译提示词",
+                                                   info="启用百度翻译,目前仅仅设置了中文翻译为英文")
                     with gr.Row():
                         appid = gr.Textbox(
                             label="百度翻译的APPID",
