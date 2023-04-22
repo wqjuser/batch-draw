@@ -377,7 +377,6 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
             watermarked_image = Image.alpha_composite(bg.convert('RGBA'), text_overlay_image)
             original_dir, original_filename = os.path.split(need_add_watermark_images[i][0])
 
-        print("图片生成的父类信息是:", "展示提示词" + p.prompt_for_display + "全部提示词" + p.prompt)
         watermarked_path = os.path.join(original_dir, f"watermarked_{original_filename}")
         watermarked_image.save(watermarked_path)
         img1 = Image.open(watermarked_path)
