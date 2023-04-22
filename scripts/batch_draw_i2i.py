@@ -6,10 +6,11 @@ import shlex
 import subprocess
 import sys
 import traceback
-
+import imageio
+import os
 import gradio as gr
 from PIL import Image, ImageSequence, ImageDraw, ImageFont
-
+import time
 import modules.scripts as scripts
 from modules import images
 from modules.processing import process_images
@@ -123,10 +124,45 @@ def run(command, desc=None, errdesc=None, custom_env=None):
     return result.stdout.decode(encoding="utf8", errors="ignore")
 
 
+def video2gif(input_video, frames):
+    # 设置输入和输出文件名和路径
+    input_file = input_video
+    current_time = time.localtime()
+    output_dir = 'outputs/multiplecontrolgif_gifs'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    output_file = f"outputs/multiplecontrolgif_gifs/{current_time}.gif"
+
+    # 读取视频
+    vid = imageio.get_reader(input_file, 'ffmpeg')
+
+    # 获取视频总帧数
+    num_frames = vid.get_meta_data()['nframes']
+
+    # 计算需要跳过的帧数
+    skip_frames = int(num_frames / frames)  # 转换为指定帧数
+
+    # 创建一个新的输出 GIF
+    with imageio.get_writer(output_file, mode='I') as writer:
+
+        # 循环读取需要的帧，并逐一写为 GIF
+        for i, frame in enumerate(vid):
+            if i % skip_frames == 0:
+                frame = frame[:, :, ::-1]  # 将帧从BGR颜色空间转换为RGB
+                writer.append_data(frame)
+
+    # 打印输出文件路径
+    print("GIF 已保存为:", os.getcwd() + '/' + output_file)
+    out_path = os.getcwd() + '/' + output_file
+    return out_path
+
+
 def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
-              resize_dir, width_input, height_input, resize_output, width_output, height_output):
+              resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames):
     if file_txt == "":
-        raise ValueError("请输入要使用的gif图片地址")
+        raise ValueError("请输入要使用的视频或者gif图片地址")
+    if file_txt.endswith("mp4"):
+        file_txt = video2gif(file_txt, mp4_frames)
 
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
@@ -481,7 +517,7 @@ class Script(scripts.Script):
                 jump = gr.Dropdown(["1", "2", "3", "4", "5"], label="1. 跳帧(1为不跳，2为两帧取一......)", value="1")
                 prompt_txt = gr.Textbox(label="2. 默认提示词，将影响各帧", lines=3, max_lines=5, value="")
                 file_txt = gr.Textbox(
-                    label="3. 输入gif文件路径(如d:\\xxx\\xx.gif,勿出现中文)",
+                    label="3. 输入gif或mp4文件全路径(勿出现中文),若为MP4请设置功能5的帧数，不设置默认60帧gif,处理MP4会耗时",
                     lines=1,
                     max_lines=2,
                     value="")
@@ -492,8 +528,13 @@ class Script(scripts.Script):
                 )
         with gr.Accordion(label="附加选项，根据需要使用", open=False):
             with gr.Column(variant='panel'):
+                mp4_frames = gr.Number(
+                    label="5. 输入指定的视频转gif帧数",
+                    value=60,
+                    min=1
+                )
                 use_individual_prompts = gr.Checkbox(
-                    label="5. 为每一帧选择一个提示词文件（非必选） 可以丰富人物表情，但是由于每一张的tag不同会引起视频的人物脸部不太统一",
+                    label="6. 为每一帧选择一个提示词文件（非必选） 可以丰富人物表情，但是由于每一张的tag不同会引起视频的人物脸部不太统一",
                     value=False
                 )
                 prompts_folder = gr.Textbox(
@@ -506,9 +547,9 @@ class Script(scripts.Script):
             with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True):
                 with gr.Column(variant='panel'):
                     with gr.Row():
-                        rm_bg = gr.Checkbox(label="6. 去除图片的背景仅保留人物?",
+                        rm_bg = gr.Checkbox(label="7. 去除图片的背景仅保留人物?",
                                             info="需要安装rembg，若未安装请点击下方按钮安装rembg")
-                        save_or = gr.Checkbox(label="7. 是否保留原图",
+                        save_or = gr.Checkbox(label="8. 是否保留原图",
                                               info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
 
                     def check_rembg(rm_bg):
@@ -553,7 +594,7 @@ class Script(scripts.Script):
 
             with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
                 with gr.Column(variant='panel'):
-                    resize_input = gr.Checkbox(label="8. 调整输入GIF尺寸",
+                    resize_input = gr.Checkbox(label="9. 调整输入GIF尺寸",
                                                info="注意尺寸修改后根据情况您需要修改图生图的宽高")
                     resize_dir = gr.Textbox(
                         label="输入改变尺寸后的gif文件路径(如d:\\xxx\\xx.gif,勿出现中文)，过程有些许耗时,若勾选了上面调整尺寸这个文本为空将会使用输入路径，这样会覆盖原有的GIF图片",
@@ -588,7 +629,7 @@ class Script(scripts.Script):
                         reverse_gif = gr.Checkbox(label="反转 GIF（倒放 GIF）", info="需启用合成 GIF 动图")
                 with gr.Column(variant='panel'):
                     with gr.Column():
-                        text_watermark = gr.Checkbox(label="9. 添加文字水印", info="自定义文字水印")
+                        text_watermark = gr.Checkbox(label="10. 添加文字水印", info="自定义文字水印")
                         with gr.Row():
                             with gr.Column(scale=8):
                                 with gr.Row():
@@ -626,13 +667,13 @@ class Script(scripts.Script):
                 btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
                 width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
                 text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
-                text_watermark_content, custom_font, text_font_path, add_bg, bg_path]
+                text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames]
 
     def run(self, p, jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
             btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
             width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
-            text_watermark_content, custom_font, text_font_path, add_bg, bg_path):
+            text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -645,7 +686,8 @@ class Script(scripts.Script):
         p.n_iter = 1
         original_images, processed, processed_images, processed_images2, dura = mcprocess(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), rm_bg, resize_input,
-            resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output))
+            resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output),
+            int(mp4_frames))
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
