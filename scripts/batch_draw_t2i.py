@@ -184,8 +184,8 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
         if file_idx < len(prompt_files):
             prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
             if not prompt_file.endswith(".txt"):
-                return
-                # 打开文件，获取文件编码
+                continue
+            # 打开文件，获取文件编码
             with open(prompt_file, "rb") as f:
                 result = chardet.detect(f.read())
                 file_encoding = result['encoding']
