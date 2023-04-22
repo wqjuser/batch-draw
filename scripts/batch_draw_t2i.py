@@ -204,6 +204,11 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
         if first_processed is None:
             first_processed = processed
 
+        if first_processed is not None:
+            print("首次操作后不为空")
+        else:
+            print("首次操作后为空")
+
         for i, img1 in enumerate(processed.images):
             if i > 0:
                 break
@@ -553,59 +558,59 @@ class Script(scripts.Script):
         original_images, processed, processed_images, processed_images2, dura = mcprocess(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), enable_translate,
             appid, secret_key)
-        if processed is not None:
-            p.prompt_for_display = processed.prompt
-            processed_images_flattened = []
-            if save_or:
-                for row in original_images:
-                    processed_images_flattened += row
 
-                if len(processed_images_flattened) == 1:
-                    processed.images = processed_images_flattened
-                else:
-                    processed.images = [images.image_grid(processed_images_flattened,
-                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
-            or_images = []
+        p.prompt_for_display = processed.prompt
+        processed_images_flattened = []
+        if save_or:
+            for row in original_images:
+                processed_images_flattened += row
 
-            if len(processed.images) == 1:
-                or_images.append(processed.images[0])
+            if len(processed_images_flattened) == 1:
+                processed.images = processed_images_flattened
             else:
-                for i, img in enumerate(processed.images):
-                    if i == 0:
-                        continue
-                    or_images.append(processed.images[i])
+                processed.images = [images.image_grid(processed_images_flattened,
+                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
+        or_images = []
 
-            if rm_bg:
-                for row in processed_images:
-                    processed_images_flattened += row
+        if len(processed.images) == 1:
+            or_images.append(processed.images[0])
+        else:
+            for i, img in enumerate(processed.images):
+                if i == 0:
+                    continue
+                or_images.append(processed.images[i])
 
-                if len(processed_images_flattened) == 1:
-                    processed.images = processed_images_flattened
-                else:
-                    processed.images = [images.image_grid(processed_images_flattened,
+        if rm_bg:
+            for row in processed_images:
+                processed_images_flattened += row
+
+            if len(processed_images_flattened) == 1:
+                processed.images = processed_images_flattened
+            else:
+                processed.images = [images.image_grid(processed_images_flattened,
                                                       rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
-            need_add_watermark_images = []
-            need_add_watermark_images1 = []
+        need_add_watermark_images = []
+        need_add_watermark_images1 = []
 
-            new_images = []
+        new_images = []
 
-            # 添加文字水印之后的操作
-            if text_watermark:
-                watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
+        # 添加文字水印之后的操作
+        if text_watermark:
+            watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
                                                or_images,
                                                text_watermark_color, text_watermark_content, text_watermark_pos,
                                                text_watermark_target,
                                                text_watermark_size, text_watermark_font, custom_font, text_font_path, p,
                                                processed)
             # 添加水印后，只对最终图片进行展示
-                processed_images_flattened = []
-                for row in watermarked_images:
-                    processed_images_flattened += row
-                if len(processed_images_flattened) == 1:
-                    processed.images = processed_images_flattened
-                else:
-                    processed.images = [images.image_grid(processed_images_flattened,
+            processed_images_flattened = []
+            for row in watermarked_images:
+                processed_images_flattened += row
+            if len(processed_images_flattened) == 1:
+                processed.images = processed_images_flattened
+            else:
+                processed.images = [images.image_grid(processed_images_flattened,
                                                       rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
         # 需要优化逻辑,功能暂时不开放
