@@ -18,8 +18,6 @@ from modules.shared import state
 import chardet
 
 
-
-
 def process_string_tag(tag):
     return tag
 
@@ -143,7 +141,7 @@ def video2gif(input_video, frames):
     num_frames = vid.get_meta_data()['nframes']
 
     # 计算需要跳过的帧数
-    skip_frames = int(int(num_frames) / frames)  # 转换为指定帧数
+    skip_frames = int(num_frames // frames)  # 转换为指定帧数 使用地板除向下取整
 
     # 创建一个新的输出 GIF
     with imageio.get_writer(output_file, mode='I') as writer:
