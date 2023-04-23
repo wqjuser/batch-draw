@@ -141,7 +141,7 @@ def video2gif(input_video, frames):
     num_frames = vid.get_meta_data()['nframes']
 
     # 计算需要跳过的帧数
-    skip_frames = int(num_frames // frames)  # 转换为指定帧数 使用地板除向下取整
+    skip_frames = int(int(num_frames) // frames)  # 转换为指定帧数 使用地板除向下取整
 
     # 创建一个新的输出 GIF
     with imageio.get_writer(output_file, mode='I') as writer:
@@ -166,7 +166,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
         if mp4_frames > 0:
             file_txt = video2gif(file_txt, mp4_frames)
         else:
-            raise ValueError("请输入大于0的整数")
+            raise ValueError("请在功能5里面输入大于0的整数帧数")
 
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
