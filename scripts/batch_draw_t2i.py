@@ -121,7 +121,13 @@ def run(command, desc=None, errdesc=None, custom_env=None):
 
 
 def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, enable_translate,
-              appid, secret_key):
+              appid, secret_key, controlnet_images_folder):
+    controlnet_images_folder = controlnet_images_folder.replace("\\", "/")
+    controlnet_images_folder = controlnet_images_folder.replace('"', '')
+    if controlnet_images_folder != "":
+        assert os.path.isdir(
+            controlnet_images_folder), f"关键词文件夹-> '{controlnet_images_folder}' 不存在或不是文件夹."
+
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
     prompt_files = sorted(
         [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
@@ -166,6 +172,14 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
     frame_count = 0
 
     copy_p = copy.copy(p)
+    if controlnet_images_folder != "":
+        for filename in os.listdir(controlnet_images_folder):
+            # 检查文件是否为图片格式
+            if filename.endswith(".jpg") or filename.endswith(".png"):
+                # 打开图片并进行处理操作
+                img = Image.open(os.path.join(controlnet_images_folder, filename))
+                copy_p.init_images = [img]
+
     for prompt_file in prompt_files:
         if state.interrupted:
             state.nextjob()
@@ -203,11 +217,6 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
         processed = process_images(copy_p)
         if first_processed is None:
             first_processed = processed
-
-        if first_processed is not None:
-            print("首次操作后不为空")
-        else:
-            print("首次操作后为空")
 
         for i, img1 in enumerate(processed.images):
             if i > 0:
@@ -531,20 +540,27 @@ class Script(scripts.Script):
                             lines=1, max_lines=2,
                             value=""
                         )
+                with gr.Column():
+                    controlnet_images = gr.Textbox(
+                        label="6. 输入每个画面的使用的controlnet的图片文件夹路径，勾选controlnet并把参考图留空",
+                        lines=1,
+                        max_lines=2,
+                        value=""
+                    )
 
         return [jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
                 btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
                 width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
                 text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
                 text_watermark_content, custom_font, text_font_path, add_bg, bg_path, baidu_info, enable_translate,
-                appid, secret_key]
+                appid, secret_key, controlnet_images]
 
     def run(self, p, jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
             btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
             width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
             text_watermark_content, custom_font, text_font_path, add_bg, bg_path, baidu_info, enable_translate, appid,
-            secret_key):
+            secret_key, controlnet_images):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -557,7 +573,7 @@ class Script(scripts.Script):
         p.n_iter = 1
         original_images, processed, processed_images, processed_images2, dura = mcprocess(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), enable_translate,
-            appid, secret_key)
+            appid, secret_key, controlnet_images)
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
