@@ -163,7 +163,10 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
     if file_txt == "":
         raise ValueError("请输入要使用的视频或者gif图片地址")
     if file_txt.endswith("mp4"):
-        file_txt = video2gif(file_txt, mp4_frames)
+        if mp4_frames > 0:
+            file_txt = video2gif(file_txt, mp4_frames)
+        else:
+            raise ValueError("请输入大于0的整数")
 
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
