@@ -5,17 +5,14 @@ import random
 import shlex
 import subprocess
 import sys
+import time
 import traceback
-import imageio
-import os
 import gradio as gr
 from PIL import Image, ImageSequence, ImageDraw, ImageFont
-import time
 import modules.scripts as scripts
 from modules import images
 from modules.processing import process_images
 from modules.shared import state
-import chardet
 
 
 def process_string_tag(tag):
@@ -126,171 +123,177 @@ def run(command, desc=None, errdesc=None, custom_env=None):
 
 
 def video2gif(input_video, frames):
-    # 设置输入和输出文件名和路径
+    if is_installed('imageio') and is_installed('av'):
+        import imageio
+        import av
+
+        # 设置输入和输出文件名和路径
     input_file = input_video
-    current_time = time.localtime()
+    current_time = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
     output_dir = 'outputs/multiplecontrolgif_gifs'
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     output_file = f"outputs/multiplecontrolgif_gifs/{current_time}.gif"
-
-    # 读取视频
-    vid = imageio.get_reader(input_file, 'ffmpeg')
-
-    # 获取视频总帧数
-    num_frames = vid.get_meta_data()['nframes']
-
+    inf = input_file.replace("\\", "/")
+    inf = inf.replace('"', '')
+    print("开始将视频转换为gif请稍后...")
+    container = av.open(inf)
+    video_stream = container.streams.video[0]
     # 计算需要跳过的帧数
-    skip_frames = int(int(num_frames) // frames)  # 转换为指定帧数 使用地板除向下取整
-
-    # 创建一个新的输出 GIF
-    with imageio.get_writer(output_file, mode='I') as writer:
-
-        # 循环读取需要的帧，并逐一写为 GIF
-        for i, frame in enumerate(vid):
-            if i % skip_frames == 0:
-                frame = frame[:, :, ::-1]  # 将帧从BGR颜色空间转换为RGB
+    duration = 1 / frames  # 转换为指定帧数
+    with imageio.get_reader(inf, 'ffmpeg') as reader:
+        fps = reader.get_meta_data()['fps']
+        print(f"原视频帧数为：每秒{int(fps)}帧,调整的gif帧数为：每秒{frames}帧")
+        # 创建一个新的输出 GIF
+        with imageio.get_writer(output_file, mode='I', duration=duration) as writer:
+            # 循环读取需要的帧，并逐一写为 GIF
+            for i, frame in enumerate(reader):
                 writer.append_data(frame)
-
-    # 打印输出文件路径
-    print("GIF 已保存为:", os.getcwd() + '/' + output_file)
     out_path = os.getcwd() + '/' + output_file
+    container.close()
+    reader.close()
+    print("视频转换gif完成，继续后续步骤")
     return out_path
 
 
-def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
-              resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames):
+def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
+            resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames):
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
 
-    if inf == "":
-        raise ValueError("请输入要使用的视频或者gif图片地址")
-    if inf.endswith("mp4"):
-        if mp4_frames > 0:
-            inf = video2gif(file_txt, mp4_frames)
+    try:
+        if inf == "":
+            raise ValueError("请输入要使用的视频或者gif图片地址")
+        if inf.endswith("mp4"):
+            if mp4_frames > 0:
+                if is_installed("moviepy"):
+                    inf = video2gif(file_txt, mp4_frames)
+            else:
+                raise ValueError("请在功能5里面输入大于0的整数帧数")
+
+        if resize_dir != "":
+            resize_dir = resize_dir.replace("\\", "/")
+            resize_dir = resize_dir.replace('"', '')
         else:
-            raise ValueError("请在功能5里面输入大于0的整数帧数")
+            resize_dir = inf
+    except TypeError as e:
+        print(e)
+    finally:
+        gif = Image.open(inf)
+        dura = gif.info['duration']
 
-    if resize_dir != "":
-        resize_dir = resize_dir.replace("\\", "/")
-        resize_dir = resize_dir.replace('"', '')
-    else:
-        resize_dir = inf
+        if rm_bg:
+            if is_installed("rembg"):
+                import rembg
 
-    gif = Image.open(inf)
-    dura = gif.info['duration']
+        # 用户选择修改gif尺寸
+        if resize_input:
+            if width_input > 0 and height_input > 0:
+                print('用户修改了输入的gif尺寸为 %d * %d' % (width_input, height_input))
+                gif = Image.open(resize_gif(inf, resize_dir, width_input, height_input))
+            else:
+                raise ValueError("宽度和高度应该都大于0")
 
-    if rm_bg:
-        if is_installed("rembg"):
-            import rembg
+        imgs = [f.copy() for f in ImageSequence.Iterator(gif)]
 
-    # 用户选择修改gif尺寸
-    if resize_input:
-        if width_input > 0 and height_input > 0:
-            print('用户修改了输入的gif尺寸为 %d * %d' % (width_input, height_input))
-            gif = Image.open(resize_gif(inf, resize_dir, width_input, height_input))
-        else:
-            raise ValueError("宽度和高度应该都大于0")
+        if resize_input:
+            print('改变后的gif图的帧数为：', len(imgs))
 
-    imgs = [f.copy() for f in ImageSequence.Iterator(gif)]
-
-    if resize_input:
-        print('改变后的gif图的帧数为：', len(imgs))
-
-    if use_individual_prompts:
-        assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
-        prompt_files = sorted(
-            [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
-
-    first_processed = None
-    original_images = []
-    processed_images = []
-    processed_images2 = []
-    for i in range(p.batch_size * p.n_iter):
-        original_images.append([])
-        processed_images.append([])
-        processed_images2.append([])
-
-    lines = [x.strip() for x in prompt_txt.splitlines()]
-    lines = [x for x in lines if len(x) > 0]
-
-    p.do_not_save_grid = True
-
-    job_count = 0
-    jobs = []
-
-    for line in lines:
-        if "--" in line:
-            try:
-                args = cmdargs(line)
-            except Exception as e:
-                print(f"Error parsing line [line] as commandline:", file=sys.stderr)
-                print(traceback.format_exc(), file=sys.stderr)
-                args = {"prompt": line}
-        else:
-            args = {"prompt": line}
-
-        n_iter = args.get("n_iter", 1)
-        job_count += 1
-        jobs.append(args)
-
-    jumps = int(jump)
-    state.job_count = min(int(len(imgs) * p.n_iter / jumps), max_frames)
-
-    j = -1
-    file_idx = 0
-    frame_count = 0
-
-    copy_p = copy.copy(p)
-    for img in imgs:
-        if state.interrupted:
-            state.nextjob()
-            break
-        if state.skipped:
-            state.skipped = False
-        state.job = f"{state.job_no + 1} out of {state.job_count}"
-        j = j + 1
-        if j % jumps != 0:
-            continue
-        if frame_count >= max_frames:
-            break
-        for k, v in args.items():
-            setattr(copy_p, k, v)
         if use_individual_prompts:
-            if file_idx < len(prompt_files):
-                prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
-                # 打开文件，获取文件编码
-                with open(prompt_file, "rb") as f:
-                    result = chardet.detect(f.read())
-                    file_encoding = result['encoding']
-                print("当前文件编码格式：", file_encoding)
-                with open(prompt_file, "r", encoding=file_encoding) as f:
-                    individual_prompt = f.read().strip()
-                copy_p.prompt = f"{copy_p.prompt} {individual_prompt}"
-                file_idx += 1
+            assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
+            prompt_files = sorted(
+                [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
+
+        first_processed = None
+        original_images = []
+        processed_images = []
+        processed_images2 = []
+        for i in range(p.batch_size * p.n_iter):
+            original_images.append([])
+            processed_images.append([])
+            processed_images2.append([])
+
+        lines = [x.strip() for x in prompt_txt.splitlines()]
+        lines = [x for x in lines if len(x) > 0]
+
+        p.do_not_save_grid = True
+
+        job_count = 0
+        jobs = []
+
+        for line in lines:
+            if "--" in line:
+                try:
+                    args = cmdargs(line)
+                except Exception as e:
+                    print(f"Error parsing line [line] as commandline:", file=sys.stderr)
+                    print(traceback.format_exc(), file=sys.stderr)
+                    args = {"prompt": line}
             else:
-                print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
+                args = {"prompt": line}
 
-        copy_p.init_images = [img]
-        processed = process_images(copy_p)
-        if first_processed is None:
-            first_processed = processed
+            n_iter = args.get("n_iter", 1)
+            job_count += 1
+            jobs.append(args)
 
-        for i, img1 in enumerate(processed.images):
-            if i > 0:
+        jumps = int(jump)
+        state.job_count = min(int(len(imgs) * p.n_iter / jumps), max_frames)
+
+        j = -1
+        file_idx = 0
+        frame_count = 0
+
+        copy_p = copy.copy(p)
+        for img in imgs:
+            if state.interrupted:
+                state.nextjob()
                 break
-            original_images[i].append(img1)
-            if rm_bg:
-                img1 = rembg.remove(img1)
-                processed_images[i].append(img1)
-                img2 = Image.new("RGBA", img1.size, (0, 0, 0, 0))
-                r, g, b, a = img1.split()
-                img2.paste(img1, (0, 0), mask=a)
-                processed_images2[i].append(img2)
-            else:
-                processed_images[i].append(img1)
-                processed_images2[i].append(img1)
-        frame_count += 1
+            if state.skipped:
+                state.skipped = False
+            state.job = f"{state.job_no + 1} out of {state.job_count}"
+            j = j + 1
+            if j % jumps != 0:
+                continue
+            if frame_count >= max_frames:
+                break
+            for k, v in args.items():
+                setattr(copy_p, k, v)
+            if use_individual_prompts:
+                if file_idx < len(prompt_files):
+                    prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
+                    # 打开文件，获取文件编码
+                    with open(prompt_file, "rb") as f:
+                        if is_installed('chardet'):
+                            import chardet
+                        result = chardet.detect(f.read())
+                        file_encoding = result['encoding']
+                    with open(prompt_file, "r", encoding=file_encoding) as f:
+                        individual_prompt = f.read().strip()
+                    copy_p.prompt = f"{copy_p.prompt} {individual_prompt}"
+                    file_idx += 1
+                else:
+                    print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
+
+            copy_p.init_images = [img]
+            processed = process_images(copy_p)
+            if first_processed is None:
+                first_processed = processed
+
+            for i, img1 in enumerate(processed.images):
+                if i > 0:
+                    break
+                original_images[i].append(img1)
+                if rm_bg:
+                    img1 = rembg.remove(img1)
+                    processed_images[i].append(img1)
+                    img2 = Image.new("RGBA", img1.size, (0, 0, 0, 0))
+                    r, g, b, a = img1.split()
+                    img2.paste(img1, (0, 0), mask=a)
+                    processed_images2[i].append(img2)
+                else:
+                    processed_images[i].append(img1)
+                    processed_images2[i].append(img1)
+            frame_count += 1
 
     return original_images, first_processed, processed_images, processed_images2, dura
 
@@ -526,7 +529,7 @@ class Script(scripts.Script):
                 jump = gr.Dropdown(["1", "2", "3", "4", "5"], label="1. 跳帧(1为不跳，2为两帧取一......)", value="1")
                 prompt_txt = gr.Textbox(label="2. 默认提示词，将影响各帧", lines=3, max_lines=5, value="")
                 file_txt = gr.Textbox(
-                    label="3. 输入gif或mp4文件全路径(勿出现中文),若为MP4请设置功能5的帧数，不设置默认60帧gif,处理MP4会耗时",
+                    label="3. 输入gif或mp4文件全路径(勿出现中文), 若为mp4请勾选功能5并设置帧数默认30帧每秒, 处理mp4会很耗时",
                     lines=1,
                     max_lines=2,
                     value="")
@@ -537,9 +540,38 @@ class Script(scripts.Script):
                 )
         with gr.Accordion(label="附加选项，根据需要使用", open=False):
             with gr.Column(variant='panel'):
+                mp4togif = gr.Checkbox(label="5. 启用mp4转gif,只有输入为mp4文件时勾选起效")
+
+                def check_moviepy(mp4togif):
+                    if mp4togif:
+                        if is_installed('imageio') and is_installed('av'):
+                            return gr.update(visible=False, value='')
+                        else:
+                            return gr.update(visible=True, value='请点击安装环境')
+                    else:
+                        return gr.update(visible=False, value='')
+
+                btn_install_moviepy = gr.Button(value="未安装处理视频的环境，请点击安装", visible=False).style(
+                    full_width=True)
+                mp4togif.change(check_moviepy, inputs=[mp4togif], outputs=[btn_install_moviepy])
+
+                def install_moviepy():
+                    if is_installed('imageio') and is_installed('av'):
+                        return
+                    print("安装过程：", run_pip("install imageio av", "开始安装环境"))
+                    return gr.update(value="安装完成", visible=False)
+
+                def change_btn_ui():
+                    return gr.update(value='安装中,请在控制台查看进度,安装完成按钮将会自动消失', interactive=False)
+
+                # 添加点击事件
+                btn_install_moviepy.click(change_btn_ui, inputs=None, outputs=[btn_install_moviepy],
+                                          show_progress=True)
+                btn_install_moviepy.click(install_moviepy, inputs=None, outputs=[btn_install_moviepy],
+                                          show_progress=True)
                 mp4_frames = gr.Number(
-                    label="5. 输入指定的视频转gif帧数",
-                    value=60,
+                    label="输入指定的视频转gif帧数",
+                    value=30,
                     min=1
                 )
                 use_individual_prompts = gr.Checkbox(
@@ -579,7 +611,7 @@ class Script(scripts.Script):
                         if is_installed("rembg"):
                             print('已安装rembg无需重复安装')
                             return
-                        print("安装过程：", run_pip("install rembg", "开始安装rembg"))
+                        print("安装过程：", run_pip("install rembg chardet", "开始安装rembg"))
                         return gr.update(value="安装完成", visible=False)
 
                     def change_btn_ui():
@@ -693,7 +725,7 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed, processed_images, processed_images2, dura = mcprocess(
+        original_images, processed, processed_images, processed_images2, dura = process(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), rm_bg, resize_input,
             resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output),
             int(mp4_frames))
