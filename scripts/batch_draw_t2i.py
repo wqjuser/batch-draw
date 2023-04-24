@@ -136,6 +136,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
     original_images = []
     processed_images = []
     processed_images2 = []
+    controlling_images = []
     for i in range(p.batch_size * p.n_iter):
         original_images.append([])
         processed_images.append([])
@@ -178,51 +179,98 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             if filename.endswith(".jpg") or filename.endswith(".png"):
                 # 打开图片并进行处理操作
                 img = Image.open(os.path.join(controlnet_images_folder, filename))
-                copy_p.init_images = [img]
-
-    for prompt_file in prompt_files:
-        if state.interrupted:
-            state.nextjob()
-            break
-        if state.skipped:
-            state.skipped = False
-        state.job = f"{state.job_no + 1} out of {state.job_count}"
-        j = j + 1
-        if j % jumps != 0:
-            continue
-        if frame_count >= max_frames:
-            break
-        for k, v in args.items():
-            setattr(copy_p, k, v)
-
-        if file_idx < len(prompt_files):
-            prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
-            if not prompt_file.endswith(".txt"):
-                continue
-            # 打开文件，获取文件编码
-            with open(prompt_file, "rb") as f:
-                result = chardet.detect(f.read())
-                file_encoding = result['encoding']
-            print("当前文件编码格式：", file_encoding)
-            with open(prompt_file, "r", encoding=file_encoding) as f:
-                individual_prompt = f.read().strip()
-            if enable_translate:
-                copy_p.prompt = baidu_translate(f"{individual_prompt} {copy_p.prompt}", 'zh', 'en', appid, secret_key)
-            else:
-                copy_p.prompt = f"{individual_prompt} {copy_p.prompt}"
-            file_idx += 1
-        else:
-            print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
-
-        processed = process_images(copy_p)
-        if first_processed is None:
-            first_processed = processed
-
-        for i, img1 in enumerate(processed.images):
-            if i > 0:
+                controlling_images.append(img)
+    if len(controlling_images) != 0:
+        for img in controlling_images:
+            if state.interrupted:
+                state.nextjob()
                 break
-            original_images[i].append(img1)
-        frame_count += 1
+            if state.skipped:
+                state.skipped = False
+            state.job = f"{state.job_no + 1} out of {state.job_count}"
+            j = j + 1
+            if j % jumps != 0:
+                continue
+            if frame_count >= max_frames:
+                break
+            for k, v in args.items():
+                setattr(copy_p, k, v)
+
+            if file_idx < len(prompt_files):
+                prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
+                if not prompt_file.endswith(".txt"):
+                    continue
+                # 打开文件，获取文件编码
+                with open(prompt_file, "rb") as f:
+                    result = chardet.detect(f.read())
+                    file_encoding = result['encoding']
+                print("当前文件编码格式：", file_encoding)
+                with open(prompt_file, "r", encoding=file_encoding) as f:
+                    individual_prompt = f.read().strip()
+                if enable_translate:
+                    copy_p.prompt = baidu_translate(f"{individual_prompt} {copy_p.prompt}", 'zh', 'en', appid,
+                                                    secret_key)
+                else:
+                    copy_p.prompt = f"{individual_prompt} {copy_p.prompt}"
+                file_idx += 1
+            else:
+                print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
+
+            copy_p.init_images = [img]
+            processed = process_images(copy_p)
+            if first_processed is None:
+                first_processed = processed
+
+            for i, img1 in enumerate(processed.images):
+                if i > 0:
+                    break
+                original_images[i].append(img1)
+            frame_count += 1
+    else:
+        for prompt_file in prompt_files:
+            if state.interrupted:
+                state.nextjob()
+                break
+            if state.skipped:
+                state.skipped = False
+            state.job = f"{state.job_no + 1} out of {state.job_count}"
+            j = j + 1
+            if j % jumps != 0:
+                continue
+            if frame_count >= max_frames:
+                break
+            for k, v in args.items():
+                setattr(copy_p, k, v)
+
+            if file_idx < len(prompt_files):
+                prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
+                if not prompt_file.endswith(".txt"):
+                    continue
+                # 打开文件，获取文件编码
+                with open(prompt_file, "rb") as f:
+                    result = chardet.detect(f.read())
+                    file_encoding = result['encoding']
+                print("当前文件编码格式：", file_encoding)
+                with open(prompt_file, "r", encoding=file_encoding) as f:
+                    individual_prompt = f.read().strip()
+                if enable_translate:
+                    copy_p.prompt = baidu_translate(f"{individual_prompt} {copy_p.prompt}", 'zh', 'en', appid,
+                                                    secret_key)
+                else:
+                    copy_p.prompt = f"{individual_prompt} {copy_p.prompt}"
+                file_idx += 1
+            else:
+                print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
+
+            processed = process_images(copy_p)
+            if first_processed is None:
+                first_processed = processed
+
+            for i, img1 in enumerate(processed.images):
+                if i > 0:
+                    break
+                original_images[i].append(img1)
+            frame_count += 1
 
     return original_images, first_processed, processed_images, processed_images2, 0
 
