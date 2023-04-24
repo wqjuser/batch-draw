@@ -242,7 +242,7 @@ def mcprocess(p, images_num):
                      "highly detailed skin, no watermark signature, detailed background, photon mapping," \
                      " radiosity, physically-based rendering, extremely beautiful, cure lovely, "
 
-    for num in images_num:
+    for num in range(images_num):
         if state.interrupted:
             state.nextjob()
             break
