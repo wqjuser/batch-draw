@@ -296,7 +296,7 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed = mcprocess(p, images_num)
+        original_images, processed = mcprocess(p, int(images_num))
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
