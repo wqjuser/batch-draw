@@ -151,17 +151,17 @@ def mcprocess(p, images_num):
         original_images.append([])
 
     p.do_not_save_grid = True
-    job_count = 0
-    jobs = []
-
-    lines = [x.strip() for x in prompt_txt.splitlines()]
-    lines = [x for x in lines if len(x) > 0]
-
-    for line in lines:
-        args = {"prompt": line}
-        n_iter = args.get("n_iter", 1)
-        job_count += 1
-        jobs.append(args)
+    # job_count = 0
+    # jobs = []
+    #
+    # lines = [x.strip() for x in prompt_txt.splitlines()]
+    # lines = [x for x in lines if len(x) > 0]
+    #
+    # for line in lines:
+    #     args = {"prompt": line}
+    #     n_iter = args.get("n_iter", 1)
+    #     job_count += 1
+    #     jobs.append(args)
 
     state.job_count = int(images_num * p.n_iter)
 
@@ -250,8 +250,8 @@ def mcprocess(p, images_num):
             state.skipped = False
         state.job = f"{state.job_no + 1} out of {state.job_count}"
 
-        for k, v in args.items():
-            setattr(copy_p, k, v)
+        # for k, v in args.items():
+        #     setattr(copy_p, k, v)
 
         other_prompts = random_prompt_selection([
             action_prompts, eyes_prompts, expression_prompts, hair_prompts,
