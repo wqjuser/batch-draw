@@ -293,8 +293,6 @@ class Script(scripts.Script):
 
         p.do_not_save_grid = True
 
-        p.do_not_save_samples = not save_or
-
         p.batch_size = 1
         p.n_iter = 1
         original_images, processed = mcprocess(p, images_num)
