@@ -142,6 +142,7 @@ def random_prompt_selection(prompt_lists):
 
     return ", ".join(selected_prompts)
 
+
 def mcprocess(p, images_num):
     prompt_txt = ""
     first_processed = None
@@ -162,7 +163,7 @@ def mcprocess(p, images_num):
         job_count += 1
         jobs.append(args)
 
-    state.job_count = min(int(images_num * p.n_iter))
+    state.job_count = int(images_num * p.n_iter)
 
     j = -1
     file_idx = 0
