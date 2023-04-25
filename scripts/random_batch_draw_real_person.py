@@ -191,9 +191,8 @@ def mcprocess(p, images_num, scene):
                     'color contact lenses', 'long eyelashes', 'colored eyelashes', 'mole under eye', 'lipstick',
                     'heart-shaped mouth', 'pout', 'open mouth', 'closed mouth', ':p', 'chestnut mouth']
 
-    expression_prompts = ['blush stickers', 'blush', 'blank stare', 'nervous', 'confused', 'scared', 'light frown',
-                          'frown', 'naughty face', 'zzz', 'light smile', 'false smile', 'seductive smile', 'smirk',
-                          'seductive smile', 'grin', ':d', 'laughing']
+    expression_prompts = ['blush stickers', 'blush', 'naughty face', 'light smile', 'seductive smile',
+                          'grin', ':d', 'laughing']
     hair_prompts = [
         ['short hair', 'medium hair', 'long hair', 'hair over', 'shoulder'],
         ['white hair', 'blonde hair', 'silver hair', 'grey hair', 'brown hair', 'black hair', 'purple hair', 'red hair',
@@ -221,18 +220,104 @@ def mcprocess(p, images_num, scene):
                        'pearl bracelet', 'drop earrings', 'puppet rings', 'corsage', 'sapphire brooch', 'jewelry',
                        'necklace', 'brooch']
 
-    camera_perspective_prompts = ['Depth of field', 'Panorama', 'telephoto lens', 'macro lens', 'full body',
-                                  'medium shot',
-                                  'cowboy shot', 'profile picture', 'close up portrait', 'POV']
-    default_prompt = "(8k, best quality, masterpiece:1.2), (realistic, " \
-                     "photo-realistic:1.37), " \
-                     "(solo:2),unity, an extremely delicate and beautiful, extremely detailed, " \
-                     "Amazing, finely detail, masterpiece, best quality, official art, " \
-                     "absurdres, incredibly absurdres, huge filesize, ultra-detailed, " \
-                     "highres, extremely detailed, beautiful detailed girl, extremely detailed " \
-                     "eyes and face, beautiful detailed eyes, Kpop idol, mix4, portrait, " \
-                     "highly detailed skin, no watermark signature, detailed background, photon mapping," \
-                     " radiosity, physically-based rendering, extremely beautiful, cure lovely, "
+    camera_perspective_prompts = ['full body', 'cowboy shot']
+
+    # (clothes lift), (skirt lift:2), (lifted by self:1.5), (underware:2), skirtlift,
+
+    default_prompt = ''
+    if 'skirtlift' in scene:
+        default_prompt = '(clothes lift), (skirt lift:2), (lifted by self:1.5), (underware:2), skirtlift,' \
+                         '<lora:skirtliftTheAstonishing_skirtliftv1:1>'
+
+    default_prompt = default_prompt + "(8k, best quality, masterpiece:1.2), (realistic, " \
+                                      "photo-realistic:1.37), " \
+                                      "(solo:2), unity, an extremely delicate and beautiful, extremely detailed, " \
+                                      "Amazing, finely detail, masterpiece, best quality, official art, " \
+                                      "absurdres, incredibly absurdres, huge filesize, ultra-detailed, " \
+                                      "highres, extremely detailed, beautiful detailed girl, extremely detailed " \
+                                      "eyes and face, beautiful detailed eyes, Kpop idol, mix4, portrait, " \
+                                      "highly detailed skin, no watermark signature, detailed background, " \
+                                      "photon mapping," \
+                                      "radiosity, physically-based rendering, extremely beautiful, cure lovely, "
+
+    negative_prompt = 'NSFW,Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
+                      '(normal quality:2), bad-picture-chill-75v, ' \
+                      '(deformed iris, deformed pupils, bad eyes, semi-realistic:1.4), (bad-image-v2-39000, ' \
+                      'bad_prompt_version2, bad-hands-5, EasyNegative, ng_deepnegative_v1_75t, ' \
+                      'bad-artist-anime:0.7), ' \
+                      '(worst quality, low quality:1.3), (depth of field, blurry:1.2), (greyscale,' \
+                      ' monochrome:1.1), ' \
+                      'nose, cropped, lowres, text, jpeg artifacts, signature, watermark, username, ' \
+                      'blurry, ' \
+                      'artist name, trademark, watermark, title, (tan, muscular, loli, petite, child,' \
+                      ' infant, ' \
+                      'toddlers, chibi, sd character:1.1), multiple view, Reference sheet, long neck,' \
+                      ' lowers, ' \
+                      'normal quality, ((monochrome)), ((grayscales)), skin spots, acnes, skin blemishes, ' \
+                      'age spot, glans, (6 more fingers on one hand), (deformity), multiple breasts, ' \
+                      '(mutated hands and fingers:1.5 ), (long body :1.3), (mutation, poorly drawn :1.2), ' \
+                      'bad anatomy, liquid body, liquid tongue, disfigured, malformed, mutated, anatomical' \
+                      ' nonsense,' \
+                      ' text font ui, error, malformed hands, long neck, blurred, lowers, lowres,' \
+                      ' bad anatomy,' \
+                      ' bad proportions, bad shadow, uncoordinated body, unnatural body, fused breasts, ' \
+                      'bad breasts,' \
+                      ' huge breasts, poorly drawn breasts, extra breasts, liquid breasts, heavy breasts, ' \
+                      'missing breasts, huge haunch, huge thighs, huge calf, bad hands, fused hand, ' \
+                      'missing hand, ' \
+                      'disappearing arms, disappearing thigh, disappearing calf, disappearing legs, ' \
+                      'fused ears, ' \
+                      'bad ears, poorly drawn ears, extra ears, liquid ears, heavy ears, missing ears, ' \
+                      'fused animal ears, bad animal ears, poorly drawn animal ears, extra animal ears, ' \
+                      'liquid animal ears, heavy animal ears, missing animal ears, text, ui, error, ' \
+                      'missing fingers,' \
+                      ' missing limb, fused fingers, one hand with more than 5 fingers, ' \
+                      'one hand with less than 5 fingers, one hand with more than 5 digit, ' \
+                      'one hand with less than 5 digit, extra digit, fewer digits, fused digit, ' \
+                      'missing digit, bad digit, liquid digit, colorful tongue, black tongue, cropped,' \
+                      ' watermark, username, blurry, JPEG artifacts, signature, 3D, 3D game, 3D game scene,' \
+                      ' 3D character, malformed feet, extra feet, bad feet, poorly drawn feet, fused feet, ' \
+                      'missing feet, extra shoes, bad shoes, fused shoes, more than two shoes, ' \
+                      'poorly drawn shoes, ' \
+                      'bad gloves, poorly drawn gloves, fused gloves, bad cum, poorly drawn cum, ' \
+                      'fused cum, ' \
+                      'bad hairs, poorly drawn hairs, fused hairs, big muscles, ugly, bad face, ' \
+                      'fused face,' \
+                      ' poorly drawn face, cloned face, big face, long face, bad eyes, ' \
+                      'fused eyes poorly drawn eyes,' \
+                      ' extra eyes, malformed limbs, more than 2 nipples, missing nipples,' \
+                      ' different nipples, ' \
+                      'fused nipples, bad nipples, poorly drawn nipples, black nipples, ' \
+                      'colorful nipples, gross proportions. short arm, (((missing arms))), missing thighs, ' \
+                      'missing calf, missing legs, mutation, duplicate, morbid, mutilated, ' \
+                      'poorly drawn hands, ' \
+                      'more than 1 left hand, more than 1 right hand, deformed, (blurry), ' \
+                      'disfigured, missing legs, ' \
+                      'extra arms, extra thighs, more than 2 thighs, extra calf, fused calf, ' \
+                      'extra legs, bad knee, ' \
+                      'extra knee, more than 2 legs, bad tails, bad mouth, fused mouth, poorly drawn mouth, ' \
+                      'bad tongue, tongue within mouth, too long tongue, black tongue, big mouth, ' \
+                      ' mouth,' \
+                      ' bad mouth, dirty face, dirty teeth, dirty pantie, fused pantie, ' \
+                      'poorly drawn pantie, ' \
+                      'fused cloth, poorly drawn cloth, bad pantie, yellow teeth, thick lips, bad cameltoe, ' \
+                      'colorful cameltoe, bad asshole, poorly drawn asshole, fused asshole, ' \
+                      'missing asshole, ' \
+                      'bad anus, bad pussy, bad crotch, bad crotch seam, fused anus, fused pussy, ' \
+                      'fused anus, ' \
+                      'fused crotch, poorly drawn crotch, fused seam, poorly drawn anus, ' \
+                      'poorly drawn pussy, ' \
+                      'poorly drawn crotch, poorly drawn crotch seam, bad thigh gap, missing thigh gap, ' \
+                      'fused thigh gap, liquid thigh gap, poorly drawn thigh gap, poorly drawn anus, ' \
+                      'bad collarbone, fused collarbone, missing collarbone, liquid collarbone, ' \
+                      'strong girl, ' \
+                      'obesity, worst quality, low quality, normal quality, liquid tentacles, ' \
+                      'bad tentacles, ' \
+                      'poorly drawn tentacles, split tentacles, fused tentacles, missing clit, ' \
+                      'bad clit, fused clit,' \
+                      ' colorful clit, black clit, liquid clit, QR code, bar code, censored, ' \
+                      'safety panties, ' \
+                      'safety knickers, beard, furry, pony, pubic hair, mosaic, excrement, faeces, shit'
 
     for num in range(images_num):
         if state.interrupted:
@@ -247,88 +332,20 @@ def mcprocess(p, images_num, scene):
             hair_accessories_prompts, jewelry_prompts, camera_perspective_prompts,
         ])
         other_prompts = other_prompts + ", " + combined_lora_prompts_string
+
         if scene != "":
             copy_p.prompt = f"{scene}, {default_prompt}, {other_prompts}"
         else:
             copy_p.prompt = f"{default_prompt}, {other_prompts}"
-        copy_p.negative_prompt = 'NSFW,Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
-                                 '(normal quality:2), ' \
-                                 '(deformed iris, deformed pupils, bad eyes, semi-realistic:1.4), (bad-image-v2-39000, ' \
-                                 'bad_prompt_version2, bad-hands-5, EasyNegative, ng_deepnegative_v1_75t, ' \
-                                 'bad-artist-anime:0.7), ' \
-                                 '(worst quality, low quality:1.3), (depth of field, blurry:1.2), (greyscale,' \
-                                 ' monochrome:1.1), ' \
-                                 'nose, cropped, lowres, text, jpeg artifacts, signature, watermark, username, ' \
-                                 'blurry, ' \
-                                 'artist name, trademark, watermark, title, (tan, muscular, loli, petite, child,' \
-                                 ' infant, ' \
-                                 'toddlers, chibi, sd character:1.1), multiple view, Reference sheet, long neck,' \
-                                 ' lowers, ' \
-                                 'normal quality, ((monochrome)), ((grayscales)), skin spots, acnes, skin blemishes, ' \
-                                 'age spot, glans, (6 more fingers on one hand), (deformity), multiple breasts, ' \
-                                 '(mutated hands and fingers:1.5 ), (long body :1.3), (mutation, poorly drawn :1.2), ' \
-                                 'bad anatomy, liquid body, liquid tongue, disfigured, malformed, mutated, anatomical' \
-                                 ' nonsense,' \
-                                 ' text font ui, error, malformed hands, long neck, blurred, lowers, lowres,' \
-                                 ' bad anatomy,' \
-                                 ' bad proportions, bad shadow, uncoordinated body, unnatural body, fused breasts, ' \
-                                 'bad breasts,' \
-                                 ' huge breasts, poorly drawn breasts, extra breasts, liquid breasts, heavy breasts, ' \
-                                 'missing breasts, huge haunch, huge thighs, huge calf, bad hands, fused hand, ' \
-                                 'missing hand, ' \
-                                 'disappearing arms, disappearing thigh, disappearing calf, disappearing legs, ' \
-                                 'fused ears, ' \
-                                 'bad ears, poorly drawn ears, extra ears, liquid ears, heavy ears, missing ears, ' \
-                                 'fused animal ears, bad animal ears, poorly drawn animal ears, extra animal ears, ' \
-                                 'liquid animal ears, heavy animal ears, missing animal ears, text, ui, error, ' \
-                                 'missing fingers,' \
-                                 ' missing limb, fused fingers, one hand with more than 5 fingers, ' \
-                                 'one hand with less than 5 fingers, one hand with more than 5 digit, ' \
-                                 'one hand with less than 5 digit, extra digit, fewer digits, fused digit, ' \
-                                 'missing digit, bad digit, liquid digit, colorful tongue, black tongue, cropped,' \
-                                 ' watermark, username, blurry, JPEG artifacts, signature, 3D, 3D game, 3D game scene,' \
-                                 ' 3D character, malformed feet, extra feet, bad feet, poorly drawn feet, fused feet, ' \
-                                 'missing feet, extra shoes, bad shoes, fused shoes, more than two shoes, ' \
-                                 'poorly drawn shoes, ' \
-                                 'bad gloves, poorly drawn gloves, fused gloves, bad cum, poorly drawn cum, ' \
-                                 'fused cum, ' \
-                                 'bad hairs, poorly drawn hairs, fused hairs, big muscles, ugly, bad face, ' \
-                                 'fused face,' \
-                                 ' poorly drawn face, cloned face, big face, long face, bad eyes, ' \
-                                 'fused eyes poorly drawn eyes,' \
-                                 ' extra eyes, malformed limbs, more than 2 nipples, missing nipples,' \
-                                 ' different nipples, ' \
-                                 'fused nipples, bad nipples, poorly drawn nipples, black nipples, ' \
-                                 'colorful nipples, gross proportions. short arm, (((missing arms))), missing thighs, ' \
-                                 'missing calf, missing legs, mutation, duplicate, morbid, mutilated, ' \
-                                 'poorly drawn hands, ' \
-                                 'more than 1 left hand, more than 1 right hand, deformed, (blurry), ' \
-                                 'disfigured, missing legs, ' \
-                                 'extra arms, extra thighs, more than 2 thighs, extra calf, fused calf, ' \
-                                 'extra legs, bad knee, ' \
-                                 'extra knee, more than 2 legs, bad tails, bad mouth, fused mouth, poorly drawn mouth, ' \
-                                 'bad tongue, tongue within mouth, too long tongue, black tongue, big mouth, ' \
-                                 ' mouth,' \
-                                 ' bad mouth, dirty face, dirty teeth, dirty pantie, fused pantie, ' \
-                                 'poorly drawn pantie, ' \
-                                 'fused cloth, poorly drawn cloth, bad pantie, yellow teeth, thick lips, bad cameltoe, ' \
-                                 'colorful cameltoe, bad asshole, poorly drawn asshole, fused asshole, ' \
-                                 'missing asshole, ' \
-                                 'bad anus, bad pussy, bad crotch, bad crotch seam, fused anus, fused pussy, ' \
-                                 'fused anus, ' \
-                                 'fused crotch, poorly drawn crotch, fused seam, poorly drawn anus, ' \
-                                 'poorly drawn pussy, ' \
-                                 'poorly drawn crotch, poorly drawn crotch seam, bad thigh gap, missing thigh gap, ' \
-                                 'fused thigh gap, liquid thigh gap, poorly drawn thigh gap, poorly drawn anus, ' \
-                                 'bad collarbone, fused collarbone, missing collarbone, liquid collarbone, ' \
-                                 'strong girl, ' \
-                                 'obesity, worst quality, low quality, normal quality, liquid tentacles, ' \
-                                 'bad tentacles, ' \
-                                 'poorly drawn tentacles, split tentacles, fused tentacles, missing clit, ' \
-                                 'bad clit, fused clit,' \
-                                 ' colorful clit, black clit, liquid clit, QR code, bar code, censored, ' \
-                                 'safety panties, ' \
-                                 'safety knickers, beard, furry, pony, pubic hair, mosaic, excrement, faeces, shit'
+        copy_p.negative_prompt = negative_prompt
+
+        # 这里按照客户需求固定了参数
+        copy_p.width = 540
+        copy_p.height = 960
+        copy_p.restore_faces = True
+        copy_p.cfg_scale = 7
+        copy_p.sampler_name = 'DPM++ SDE Karras'
+        copy_p.steps = 20
 
         processed = process_images(copy_p)
         if first_processed is None:
@@ -356,7 +373,7 @@ class Script(scripts.Script):
             with gr.Column():
                 images_num = gr.Number(label="请输入要作图的数量", value=0, min=0)
                 scene = gr.Textbox(label="请输入你想要的内容，格式为(内容:2)", value='', lines=1, max_lines=2)
-                info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与作者本人无关！！！")
+                info = gr.HTML("<br>声明：！！！本脚本只提供随机批量作图功能，使用者做的图与脚本作者本人无关！！！")
         return [images_num, scene, info]
 
     def run(self, p, images_num, scene, info):
