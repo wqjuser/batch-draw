@@ -346,7 +346,7 @@ def mcprocess(p, images_num, scene):
 class Script(scripts.Script):
 
     def title(self):
-        return "随机图片生成器"
+        return "随机真人图片生成器"
 
     def show(self, is_img2img):
         return not is_img2img
