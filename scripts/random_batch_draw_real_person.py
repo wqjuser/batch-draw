@@ -149,7 +149,7 @@ def random_prompt_selection(prompt_lists):
     return ", ".join(selected_prompts)
 
 
-def mcprocess(p, images_num, scene):
+def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5):
     prompt_txt = ""
     first_processed = None
     original_images = []
@@ -220,14 +220,13 @@ def mcprocess(p, images_num, scene):
                        'pearl bracelet', 'drop earrings', 'puppet rings', 'corsage', 'sapphire brooch', 'jewelry',
                        'necklace', 'brooch']
 
-    camera_perspective_prompts = ['full body', 'cowboy shot']
-
-    # (clothes lift), (skirt lift:2), (lifted by self:1.5), (underware:2), skirtlift,
+    camera_perspective_prompts = ['(full body:1.4)', '(medium shot:1.4)']
 
     default_prompt = ''
-    if 'skirtlift' in scene:
-        default_prompt = '(clothes lift), (skirt lift:2), (lifted by self:1.5), (underware:2), skirtlift,' \
-                         '<lora:skirtliftTheAstonishing_skirtliftv1:1>'
+    if cb_bi:
+        default_prompt = f"(bikini:{sd_wt}), "
+    if cb_uw:
+        default_prompt = default_prompt + f"(underwear:{sd_wt}), "
 
     default_prompt = default_prompt + "(8k, best quality, masterpiece:1.2), (realistic, " \
                                       "photo-realistic:1.37), " \
@@ -240,7 +239,7 @@ def mcprocess(p, images_num, scene):
                                       "photon mapping," \
                                       "radiosity, physically-based rendering, extremely beautiful, cure lovely, "
 
-    negative_prompt = 'NSFW,Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
+    negative_prompt = 'NSFW, Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
                       '(normal quality:2), bad-picture-chill-75v, ' \
                       '(deformed iris, deformed pupils, bad eyes, semi-realistic:1.4), (bad-image-v2-39000, ' \
                       'bad_prompt_version2, bad-hands-5, EasyNegative, ng_deepnegative_v1_75t, ' \
@@ -320,6 +319,22 @@ def mcprocess(p, images_num, scene):
                       'safety knickers, beard, furry, pony, pubic hair, mosaic, excrement, faeces, shit'
 
     for num in range(images_num):
+        scene = ''
+
+        if num < images_num / 5:
+            scene = scene1
+        elif num < (images_num / 5) * 2:
+            scene = scene2
+        elif num < (images_num / 5) * 3:
+            scene = scene3
+        elif num < (images_num / 5) * 4:
+            scene = scene4
+        elif num < images_num:
+            scene = scene5
+
+        if 'skirtlift' in scene:
+            default_prompt = '(clothes lift), (skirt lift:2), (lifted by self:1.5), (underware:2), skirtlift,' \
+                             '<lora:skirtliftTheAstonishing_skirtliftv1:1>, ' + default_prompt
         if state.interrupted:
             state.nextjob()
             break
@@ -372,11 +387,19 @@ class Script(scripts.Script):
         with gr.Accordion(label="随机做点图看看吧", open=True):
             with gr.Column():
                 images_num = gr.Number(label="请输入要作图的数量", value=0, min=0)
-                scene = gr.Textbox(label="请输入你想要的内容，格式为(内容:2)", value='', lines=1, max_lines=2)
+                with gr.Row():
+                    cb_bi = gr.Checkbox(label='bikini(比基尼)')
+                    cb_uw = gr.Checkbox(label='underwear(内衣)')
+                sd_wt = gr.Slider(label='权重', minimum=1, maximum=2)
+                scene1 = gr.Textbox(label="请输入你想要的内容1，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene2 = gr.Textbox(label="请输入你想要的内容2，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene3 = gr.Textbox(label="请输入你想要的内容3，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene4 = gr.Textbox(label="请输入你想要的内容4，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene5 = gr.Textbox(label="请输入你想要的内容5，格式为(内容:2)", value='', lines=1, max_lines=2)
                 info = gr.HTML("<br>声明：！！！本脚本只提供随机批量作图功能，使用者做的图与脚本作者本人无关！！！")
-        return [images_num, scene, info]
+        return [images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, info]
 
-    def run(self, p, images_num, scene, info):
+    def run(self, p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, info):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -385,7 +408,9 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed = mcprocess(p, int(images_num), scene)
+        original_images, processed = mcprocess(p, int(images_num), cb_bi, cb_uw, float(sd_wt), scene1, scene2, scene3,
+                                               scene4,
+                                               scene5)
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
