@@ -234,6 +234,12 @@ def mcprocess(p, images_num, scene, is_img2img):
                      pt.style_prompts,
                      pt.action_prompts, pt.actions_prompts, pt.clothes_prompts, pt.clothes_prompts2
                      ]
+    anime_prompts_lists = [pt.anime_characters_prompts, pt.camera_perspective_prompts, pt.person_prompts,
+                           pt.career_prompts, pt.facial_features_prompts, pt.expression_prompts, pt.hair_prompts,
+                           pt.decoration_prompts, pt.hat_prompts, pt.shoes_prompts, pt.socks_prompts, pt.gesture_prompt,
+                           pt.sight_prompts, pt.environment_prompts, pt.style_prompts, pt.action_prompts,
+                           pt.actions_prompts, pt.clothes_prompts, pt.clothes_prompts2
+                           ]
     lora_prompts = ['lora:cuteGirlMix4_v10', 'lora:koreandolllikenessV20_v20', 'lora:taiwanDollLikeness_v10',
                     'lora:japanesedolllikenessV1_v15']
     special_index = lora_prompts.index('lora:cuteGirlMix4_v10')
@@ -331,8 +337,7 @@ def mcprocess(p, images_num, scene, is_img2img):
             copy_p.negative_prompt = pt.real_person_negative_prompt
             other_prompts = other_prompts + ", mix4, " + combined_lora_prompts_string
         else:
-            prompts_lists.insert(0, pt.anime_characters_prompts)
-            other_prompts = random_prompt_selection(prompts_lists)
+            other_prompts = random_prompt_selection(anime_prompts_lists)
             copy_p.negative_prompt = pt.anime_negative_prompt
 
         if scene != "":
