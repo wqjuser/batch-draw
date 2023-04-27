@@ -335,7 +335,6 @@ def mcprocess(p, images_num, scene, is_img2img):
         if is_real:
             other_prompts = random_prompt_selection(prompts_lists)
             copy_p.negative_prompt = pt.real_person_negative_prompt
-            other_prompts = other_prompts + ", mix4, " + combined_lora_prompts_string
         else:
             other_prompts = random_prompt_selection(anime_prompts_lists)
             copy_p.negative_prompt = pt.anime_negative_prompt
