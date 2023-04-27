@@ -357,7 +357,7 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
         # 这里按照客户需求固定了参数
         copy_p.width = 540
         copy_p.height = 960
-        copy_p.restore_faces = True
+        # copy_p.restore_faces = True
         copy_p.cfg_scale = 7
         copy_p.sampler_name = 'DPM++ SDE Karras'
         copy_p.steps = 20

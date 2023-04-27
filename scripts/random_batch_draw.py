@@ -251,10 +251,7 @@ def mcprocess(p, images_num, scene, is_img2img):
 
         other_prompts = ''
 
-        # {'ar': '9:16', 'rf': True, 'cs': '7', 'steps': '20', 'seed': '123456',
-        #  'img': 'C:\Users\Administrator\Pictures\Snipaste_2023-01-20_15-43-06.png'}
         # deal with args
-        print('解析完成的参数是:', parsed_args)
         if bool(parsed_args):
             if 'real' in parsed_args:
                 is_real = True
@@ -281,7 +278,11 @@ def mcprocess(p, images_num, scene, is_img2img):
                 copy_p.restore_faces = True
             if 'sn' in parsed_args:
                 sn_value = parsed_args.get('sn')
-                copy_p.sampler_name = sn_value
+                if isinstance(sn_value, list):
+                    combined_sn = ' '.join(sn_value)
+                    copy_p.sampler_name = combined_sn
+                elif isinstance(sn_value, str):
+                    copy_p.sampler_name = sn_value
             if 'cs' in parsed_args:
                 cs_value = float(parsed_args.get('cs'))
                 copy_p.cfg_scale = cs_value
@@ -310,14 +311,20 @@ def mcprocess(p, images_num, scene, is_img2img):
                     tmp_image = Image.open(img_value)
                 copy_p.init_images = [tmp_image]
             # hr is only in t2i
-            if is_img2img:
+            if not is_img2img:
                 if 'hr' in parsed_args:
                     hr_value = parsed_args.get('hr')
                     copy_p.enable_hr = True
-                    copy_p.hr_upscaler = hr_value[0]
-                    copy_p.hr_second_pass_steps = int(hr_value[1])
-                    copy_p.denoising_strength = float(hr_value[2])
-                    copy_p.hr_scale = float(hr_value[3])
+                    if isinstance(hr_value, list):
+                        if len(hr_value) == 4:
+                            copy_p.hr_upscaler = hr_value[0]
+                        elif len(hr_value) == 5:
+                            copy_p.hr_upscaler = ' '.join(hr_value[:2])
+                        elif len(hr_value) == 6:
+                            copy_p.hr_upscaler = ' '.join(hr_value[:3])
+                        copy_p.hr_second_pass_steps = int(hr_value[-3])
+                        copy_p.denoising_strength = float(hr_value[-2])
+                        copy_p.hr_scale = float(hr_value[-1])
 
         if is_real:
             other_prompts = random_prompt_selection(prompts_lists)
@@ -330,14 +337,22 @@ def mcprocess(p, images_num, scene, is_img2img):
 
         if scene != "":
             if add_random_prompts:
-                copy_p.prompt = f"{scene}, {pt.default_prompt}, {other_prompts}"
+                if is_real:
+                    copy_p.prompt = f"{scene}, {pt.default_prompt}, mix4, {combined_lora_prompts_string}, " \
+                                    f"{other_prompts}"
+                else:
+                    copy_p.prompt = f"{scene}, {pt.default_prompt}, {other_prompts}"
             else:
                 if is_real:
                     copy_p.prompt = f"{scene}, {pt.default_prompt}, mix4, {combined_lora_prompts_string}"
                 else:
                     copy_p.prompt = f"{scene}, {pt.default_prompt}"
         else:
-            copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
+            if is_real:
+                copy_p.prompt = f"{pt.default_prompt}, mix4, {combined_lora_prompts_string}, " \
+                                f"{other_prompts}"
+            else:
+                copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
 
         processed = process_images(copy_p)
         if first_processed is None:
@@ -361,8 +376,9 @@ class Script(scripts.Script):
         with gr.Accordion(label="随机做点图看看吧", open=True):
             with gr.Column():
                 images_num = gr.Number(label="请输入要作图的数量", value=0, min=0)
-                scene = gr.Textbox(label="请输入你想要的内容，格式为(内容:2)", value='', lines=1, max_lines=2)
-                info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与作者本人无关！！！")
+                scene = gr.Textbox(label="请输入你想要的内容，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                   max_lines=2)
+                info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与脚本作者本人无关！！！")
         return [images_num, scene, info]
 
     def run(self, p, images_num, scene, info):
