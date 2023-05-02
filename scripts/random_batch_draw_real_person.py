@@ -149,8 +149,8 @@ def random_prompt_selection(prompt_lists):
     return ", ".join(selected_prompts)
 
 
-def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5):
-    prompt_txt = ""
+def mcprocess(p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, scene6, scene7,
+              scene8, scene9, scene10):
     first_processed = None
     original_images = []
     for i in range(p.batch_size * p.n_iter):
@@ -160,8 +160,6 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
 
     state.job_count = int(images_num * p.n_iter)
 
-    j = -1
-    file_idx = 0
     frame_count = 0
 
     copy_p = copy.copy(p)
@@ -170,22 +168,11 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
                     'lora:japanesedolllikenessV1_v15']
 
     special_index = lora_prompts.index('lora:cuteGirlMix4_v10')
-    lora_weights = random_weights(len(lora_prompts), special_index=special_index, special_min=0.4, special_max=0.6)
 
-    combined_lora_prompts_string = ", ".join([f"<{prompt}:{weight}>" for prompt, weight in zip(lora_prompts,
-                                                                                               lora_weights)])
-    action_prompts = ['yokozuwari', 'ahirusuwari',
-                      'indian style', 'kneeling',
-                      'arched back', 'lap pillow', 'paw pose',
-                      'one knee', 'fetal position', 'on back',
-                      'on stomach', 'sitting', 'hugging own legs',
-                      'upright straddle', 'standing', 'squatting',
-                      'turning around', 'head tilt', 'leaning forward',
-                      'arms behind head', 'arms behind back', 'hand in pocket',
-                      'cat pose', 'looking afar', 'looking at phone', 'looking away', 'visible through hair',
-                      'looking over glasses', 'look at viewer',
-                      'close to viewer', 'dynamic angle',
-                      'dramatic angle', 'stare', 'looking up', 'looking down', 'looking to the side', 'looking away']
+    action_prompts = ['sitting', 'standing', 'lying', 'spread legs', 'arm up', 'on back', 'kneeling', 'on side',
+                      'squatting', 'standing on one leg', 'straddling', 'bent over', 'walking', 'running', 'jumping',
+                      'top-down bottom-up', 'yokozuwari', 'leg lift', 'leaning back', 'one knee', 'leaning to the side',
+                      'reclining', 'seiza', 'yawning', 'shrugging', 'outstretched arm', 'arms behind back', 'leaning']
 
     eyes_prompts = ['one eye closed', 'half-closed eyes', 'aqua eyes', 'glowing eyes', 'pupils sparkling',
                     'color contact lenses', 'long eyelashes', 'colored eyelashes', 'mole under eye', 'lipstick',
@@ -204,11 +191,9 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
          'side braid',
          'braid', 'twin braids', 'ponytail', 'braided ponytail', 'french braid', 'twists', 'high ponytail'],
         ['tied hair', 'single side bun', 'curly hair', 'straight hair', 'wavy hair', 'bob hair', 'slicked-back',
-         'pompadour', 'ahoge',
-         'antenna hair',
-         'heart ahoge', 'drill hair', 'hair wings', 'disheveled hair', 'messy hair', 'chignon', 'braided bun',
-         'hime_cut', 'bob cut', 'updo', 'dreadlocks', 'double bun', 'buzz cut', 'big hair', 'shiny hair',
-         'glowing hair', 'hair between eyes', 'hair behind ear']
+         'pompadour', 'ahoge', 'antenna hair', 'heart ahoge', 'drill hair', 'hair wings', 'disheveled hair',
+         'messy hair', 'chignon', 'braided bun', 'hime_cut', 'bob cut', 'updo', 'dreadlocks', 'double bun', 'buzz cut',
+         'big hair', 'shiny hair', 'glowing hair', 'hair between eyes', 'hair behind ear']
     ]
 
     hair_accessories_prompts = ['hair ribbon', 'head scarf', 'hair bow', 'crescent hair ornament', 'lolita hairband',
@@ -216,35 +201,29 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
                                 'hair rings',
                                 'hair ornament', 'hair stick', 'heart hair ornament']
     jewelry_prompts = ['bracelet', 'ring', 'wristband', 'pendant', 'hoop earrings', 'bangle', 'stud earrings',
-                       'sunburst',
-                       'pearl bracelet', 'drop earrings', 'puppet rings', 'corsage', 'sapphire brooch', 'jewelry',
-                       'necklace', 'brooch']
+                       'sunburst', 'pearl bracelet', 'drop earrings', 'puppet rings', 'corsage', 'sapphire brooch',
+                       'jewelry', 'necklace', 'brooch']
 
     camera_perspective_prompts = ['(full body:1.4)', '(medium shot:1.4)']
 
     default_prompt = ''
+
     if cb_bi:
         default_prompt = f"(bikini:{sd_wt}), "
     if cb_uw:
         default_prompt = default_prompt + f"(underwear:{sd_wt}), "
 
-    default_prompt = default_prompt + "(8k, best quality, masterpiece:1.2), (realistic, " \
-                                      "photo-realistic:1.37), " \
-                                      "(solo:2), unity, an extremely delicate and beautiful, extremely detailed, " \
-                                      "Amazing, finely detail, masterpiece, best quality, official art, " \
-                                      "absurdres, incredibly absurdres, huge filesize, ultra-detailed, " \
-                                      "highres, extremely detailed, beautiful detailed girl, extremely detailed " \
-                                      "eyes and face, beautiful detailed eyes, Kpop idol, mix4, portrait, " \
-                                      "highly detailed skin, no watermark signature, detailed background, " \
-                                      "photon mapping," \
-                                      "radiosity, physically-based rendering, extremely beautiful, cure lovely, "
+    default_prompt = default_prompt + '(8k, best quality, masterpiece:1.2), best quality, official art, highres, ' \
+                                      'extremely detailed CG unity 8k wallpaper, extremely detailed,' \
+                                      'incredibly absurdres, highly detailed, absurdres, 8k resolution,' \
+                                      'exquisite facial features, prefect face, huge filesize,ultra-detailed,shiny skin'
 
-    negative_prompt = 'NSFW, Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
+    negative_prompt = '(NSFW:2), Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
                       '(normal quality:2), bad-picture-chill-75v, ' \
                       '(deformed iris, deformed pupils, bad eyes, semi-realistic:1.4), (bad-image-v2-39000, ' \
                       'bad_prompt_version2, bad-hands-5, EasyNegative, ng_deepnegative_v1_75t, ' \
                       'bad-artist-anime:0.7), ' \
-                      '(worst quality, low quality:1.3), (depth of field, blurry:1.2), (greyscale,' \
+                      '(worst quality, low quality:1.3), (greyscale,' \
                       ' monochrome:1.1), ' \
                       'nose, cropped, lowres, text, jpeg artifacts, signature, watermark, username, ' \
                       'blurry, ' \
@@ -321,20 +300,27 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
     for num in range(images_num):
         scene = ''
 
-        if num < images_num / 5:
+        if num < images_num / 10:
             scene = scene1
-        elif num < (images_num / 5) * 2:
+        elif num < (images_num / 10) * 2:
             scene = scene2
-        elif num < (images_num / 5) * 3:
+        elif num < (images_num / 10) * 3:
             scene = scene3
-        elif num < (images_num / 5) * 4:
+        elif num < (images_num / 10) * 4:
             scene = scene4
-        elif num < images_num:
+        elif num < (images_num / 10) * 5:
             scene = scene5
+        elif num < (images_num / 10) * 6:
+            scene = scene6
+        elif num < (images_num / 10) * 7:
+            scene = scene7
+        elif num < (images_num / 10) * 8:
+            scene = scene8
+        elif num < (images_num / 10) * 9:
+            scene = scene9
+        elif num < images_num:
+            scene = scene10
 
-        if 'skirtlift' in scene:
-            default_prompt = '(clothes lift), (skirt lift:2), (lifted by self:1.5), (underware:2), skirtlift,' \
-                             '<lora:skirtliftTheAstonishing_skirtliftv1:1>, ' + default_prompt
         if state.interrupted:
             state.nextjob()
             break
@@ -343,24 +329,49 @@ def mcprocess(p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4
         state.job = f"{state.job_no + 1} out of {state.job_count}"
 
         other_prompts = random_prompt_selection([
-            action_prompts, eyes_prompts, expression_prompts, hair_prompts,
-            hair_accessories_prompts, jewelry_prompts, camera_perspective_prompts,
+            camera_perspective_prompts, eyes_prompts, expression_prompts, hair_prompts,
+            hair_accessories_prompts, jewelry_prompts
         ])
-        other_prompts = other_prompts + ", " + combined_lora_prompts_string
+        random_action_prompts = random_prompt_selection([action_prompts])
+        lora_weights = random_weights(len(lora_prompts), special_index=special_index, special_min=0.4, special_max=0.6)
+
+        combined_lora_prompts_string = ", ".join([f"<{prompt}:{weight}>" for prompt, weight in zip(lora_prompts,
+                                                                                                   lora_weights)])
+
+        other_prompts = random_action_prompts + other_prompts + ", " + combined_lora_prompts_string
+
+        if '@666' in scene:
+            scene = scene.replace('@666', '')
+            other_prompts = other_prompts + ", " + combined_lora_prompts_string
+        if '@888' in scene:
+            scene = scene.replace('@888', '')
+            other_prompts = combined_lora_prompts_string
+        if '@555' in scene:
+            scene = scene.replace('@555', '')
+            other_prompts = random_action_prompts
+        if '@111' in scene:
+            scene = scene.replace('@111', '')
+            other_prompts = random_action_prompts + other_prompts
+        if '@000' in scene:
+            scene = scene.replace('@000', '')
+            other_prompts = ''
 
         if scene != "":
-            copy_p.prompt = f"{scene}, {default_prompt}, {other_prompts}"
+            copy_p.prompt = f"{scene}, {default_prompt} {other_prompts}"
         else:
-            copy_p.prompt = f"{default_prompt}, {other_prompts}"
+            copy_p.prompt = f"{default_prompt}  {other_prompts}"
         copy_p.negative_prompt = negative_prompt
 
         # 这里按照客户需求固定了参数
-        copy_p.width = 540
-        copy_p.height = 960
+        if cb_h:
+            copy_p.width = 540
+            copy_p.height = 960
+        elif cb_w:
+            copy_p.width = 960
+            copy_p.height = 540
         # copy_p.restore_faces = True
         copy_p.cfg_scale = 7
         copy_p.sampler_name = 'DPM++ SDE Karras'
-        copy_p.steps = 20
 
         processed = process_images(copy_p)
         if first_processed is None:
@@ -386,20 +397,40 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         with gr.Accordion(label="随机做点图看看吧", open=True):
             with gr.Column():
-                images_num = gr.Number(label="请输入要作图的数量", value=0, min=0)
+                with gr.Row():
+                    images_num = gr.Number(label="请输入要作图的数量", value=0, min=0)
                 with gr.Row():
                     cb_bi = gr.Checkbox(label='bikini(比基尼)')
                     cb_uw = gr.Checkbox(label='underwear(内衣)')
                 sd_wt = gr.Slider(label='权重', minimum=1, maximum=2)
+
+                def change_state(is_checked):
+                    if is_checked:
+                        return gr.update(value=False)
+                    else:
+                        return gr.update(value=True)
+
+                with gr.Row():
+                    cb_h = gr.Checkbox(label='竖图', value=True)
+                    cb_w = gr.Checkbox(label='横图')
+                    cb_h.change(change_state, inputs=[cb_h], outputs=[cb_w])
+                    cb_w.change(change_state, inputs=[cb_w], outputs=[cb_h])
                 scene1 = gr.Textbox(label="请输入你想要的内容1，格式为(内容:2)", value='', lines=1, max_lines=2)
                 scene2 = gr.Textbox(label="请输入你想要的内容2，格式为(内容:2)", value='', lines=1, max_lines=2)
                 scene3 = gr.Textbox(label="请输入你想要的内容3，格式为(内容:2)", value='', lines=1, max_lines=2)
                 scene4 = gr.Textbox(label="请输入你想要的内容4，格式为(内容:2)", value='', lines=1, max_lines=2)
                 scene5 = gr.Textbox(label="请输入你想要的内容5，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene6 = gr.Textbox(label="请输入你想要的内容6，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene7 = gr.Textbox(label="请输入你想要的内容7，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene8 = gr.Textbox(label="请输入你想要的内容8，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene9 = gr.Textbox(label="请输入你想要的内容9，格式为(内容:2)", value='', lines=1, max_lines=2)
+                scene10 = gr.Textbox(label="请输入你想要的内容10，格式为(内容:2)", value='', lines=1, max_lines=2)
                 info = gr.HTML("<br>声明：！！！本脚本只提供随机批量作图功能，使用者做的图与脚本作者本人无关！！！")
-        return [images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, info]
+        return [images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, scene6, scene7,
+                scene8, scene9, scene10, info]
 
-    def run(self, p, images_num, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, info):
+    def run(self, p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, scene6,
+            scene7, scene8, scene9, scene10, info):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -408,9 +439,8 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed = mcprocess(p, int(images_num), cb_bi, cb_uw, float(sd_wt), scene1, scene2, scene3,
-                                               scene4,
-                                               scene5)
+        original_images, processed = mcprocess(p, int(images_num), cb_h, cb_w, cb_bi, cb_uw, float(sd_wt), scene1,
+                                               scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10)
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
