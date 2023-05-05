@@ -205,7 +205,7 @@ def parse_args(args_str, default=None):
 
 def assign_scene(images_num, scene_num, current_num, scenes):
     images_per_scene = images_num // scene_num
-
+    scene_num = int(scene_num)
     for i in range(scene_num):
         if current_num < images_per_scene * (i + 1):
             return scenes[i]
@@ -217,8 +217,6 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
     first_processed = None
     original_images = []
     parsed_args = {}
-    is_real = False
-    add_random_prompts = False
     scenes = [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
     for i in range(p.batch_size * p.n_iter):
         original_images.append([])
@@ -251,6 +249,8 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
     combined_lora_prompts_string = ", ".join([f"<{prompt}:{weight}>" for prompt, weight in zip(lora_prompts,
                                                                                                lora_weights)])
     for num in range(images_num):
+        is_real = False
+        add_random_prompts = False
         scene = assign_scene(images_num, content_num, num, scenes)
         if scene != "":
             parsed_args = parse_args(scene)
@@ -459,7 +459,7 @@ class Script(scripts.Script):
         p.batch_size = 1
         p.n_iter = 1
         original_images, processed = mcprocess(p, int(images_num), scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10,
-                                               scene_num,  self.is_img2img)
+                                               scene_num, self.is_img2img)
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
