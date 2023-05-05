@@ -379,13 +379,37 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         with gr.Accordion(label="随机做点图看看吧", open=True):
             with gr.Column():
-                images_num = gr.Number(label="请输入要作图的数量", value=0, min=0)
-                scene = gr.Textbox(label="请输入你想要的内容，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
-                                   max_lines=2)
-                info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与脚本作者本人无关！！！")
-        return [images_num, scene, info]
+                images_num = gr.Number(label="请输入要作图的数量", value=1, min=1)
+                scene1 = gr.Textbox(label="请输入你想要的内容，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2)
+                content_num = gr.Number(value=1, min=1, visible=False)
+                with gr.Row():
+                    btn_add = gr.Button(value="添加内容输入框")
+                    btn_rem = gr.Button(value="移除内容输入框", visible=False)
 
-    def run(self, p, images_num, scene, info):
+                    def check_num(num):
+                        if num == 1:
+                            return gr.update(visible=False)
+                        else:
+                            return gr.update(visible=True)
+
+                    def add_num(num):
+                        if num < 10:
+                            return gr.update(value=num + 1)
+
+                    def reduce_num(num):
+                        if num > 1:
+                            return gr.update(value=num - 1)
+
+                    btn_add.click(add_num, inputs=[content_num], outputs=[content_num])
+                    btn_add.click(check_num, inputs=[content_num], outputs=[btn_rem])
+                    btn_rem.click(reduce_num, inputs=[content_num], outputs=[content_num])
+                    btn_rem.click(check_num, inputs=[content_num], outputs=[btn_rem])
+
+                info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与脚本作者本人无关！！！")
+        return [images_num, scene1, content_num, btn_add, btn_rem, info]
+
+    def run(self, p, images_num, scene1, info):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -394,7 +418,7 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed = mcprocess(p, int(images_num), scene, self.is_img2img)
+        original_images, processed = mcprocess(p, int(images_num), scene1, self.is_img2img)
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []

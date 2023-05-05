@@ -204,7 +204,7 @@ def mcprocess(p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, sc
                        'sunburst', 'pearl bracelet', 'drop earrings', 'puppet rings', 'corsage', 'sapphire brooch',
                        'jewelry', 'necklace', 'brooch']
 
-    camera_perspective_prompts = ['(full body:1.4)', '(medium shot:1.4)']
+    camera_perspective_prompts = ['(full body:1.4)', '(cowboy shot:1.4)']
 
     default_prompt = ''
 
@@ -214,9 +214,9 @@ def mcprocess(p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, sc
         default_prompt = default_prompt + f"(underwear:{sd_wt}), "
 
     default_prompt = default_prompt + '(8k, best quality, masterpiece:1.2), best quality, official art, highres, ' \
-                                      'extremely detailed CG unity 8k wallpaper, extremely detailed,' \
-                                      'incredibly absurdres, highly detailed, absurdres, 8k resolution,' \
-                                      'exquisite facial features, prefect face, huge filesize,ultra-detailed,shiny skin'
+                                      'extremely detailed CG unity 8k wallpaper, extremely detailed,incredibly absurdres' \
+                                      'highly detailed, absurdres, 8k resolution,exquisite facial features, prefect face, ' \
+                                      'huge filesize,ultra-detailed,shiny skin'
 
     negative_prompt = '(NSFW:2), Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
                       '(normal quality:2), bad-picture-chill-75v, ' \
@@ -329,37 +329,41 @@ def mcprocess(p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, sc
         state.job = f"{state.job_no + 1} out of {state.job_count}"
 
         other_prompts = random_prompt_selection([
-            camera_perspective_prompts, eyes_prompts, expression_prompts, hair_prompts,
+            camera_perspective_prompts, eyes_prompts, hair_prompts, expression_prompts,
             hair_accessories_prompts, jewelry_prompts
         ])
         random_action_prompts = random_prompt_selection([action_prompts])
-        lora_weights = random_weights(len(lora_prompts), special_index=special_index, special_min=0.4, special_max=0.6)
+        lora_weights = random_weights(len(lora_prompts), special_index=special_index, special_min=0.4, special_max=0.7)
 
         combined_lora_prompts_string = ", ".join([f"<{prompt}:{weight}>" for prompt, weight in zip(lora_prompts,
                                                                                                    lora_weights)])
 
-        other_prompts = random_action_prompts + other_prompts + ", " + combined_lora_prompts_string
-
-        if '@666' in scene:
-            scene = scene.replace('@666', '')
-            other_prompts = other_prompts + ", " + combined_lora_prompts_string
-        if '@888' in scene:
-            scene = scene.replace('@888', '')
-            other_prompts = combined_lora_prompts_string
-        if '@555' in scene:
-            scene = scene.replace('@555', '')
-            other_prompts = random_action_prompts
-        if '@111' in scene:
-            scene = scene.replace('@111', '')
-            other_prompts = random_action_prompts + other_prompts
-        if '@000' in scene:
-            scene = scene.replace('@000', '')
-            other_prompts = ''
+        if '@666' in scene or '@888' in scene or '@555' in scene or '@111' in scene or '@000' in scene or '@222' in scene:
+            if '@666' in scene:
+                scene = scene.replace('@666', '')
+                other_prompts = other_prompts + ', mix4, ' + combined_lora_prompts_string + ', '
+            if '@888' in scene:
+                scene = scene.replace('@888', '')
+                other_prompts = 'mix4, ' + combined_lora_prompts_string + ', '
+            if '@555' in scene:
+                scene = scene.replace('@555', '')
+                other_prompts = '(' + random_action_prompts + ':1.5), '
+            if '@222' in scene:
+                scene = scene.replace('@222', '')
+                other_prompts = '(' + random_action_prompts + ':1.5), ' + 'mix4, ' + combined_lora_prompts_string + ', '
+            if '@111' in scene:
+                scene = scene.replace('@111', '')
+                other_prompts = '(' + random_action_prompts + ':1.5), ' + other_prompts + ', '
+            if '@000' in scene:
+                scene = scene.replace('@000', '')
+                other_prompts = ''
+        else:
+            other_prompts = '(' + random_action_prompts + ':1.5), ' + other_prompts + ', mix4, ' + combined_lora_prompts_string
 
         if scene != "":
-            copy_p.prompt = f"{scene}, {default_prompt} {other_prompts}"
+            copy_p.prompt = f"{default_prompt}, {scene}, {other_prompts}"
         else:
-            copy_p.prompt = f"{default_prompt}  {other_prompts}"
+            copy_p.prompt = f"{default_prompt}, {other_prompts}"
         copy_p.negative_prompt = negative_prompt
 
         # 这里按照客户需求固定了参数
