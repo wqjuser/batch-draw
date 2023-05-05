@@ -22,6 +22,7 @@ import os
 import tempfile
 import urllib
 from scripts import prompts as pt
+import threading
 
 
 def process_string_tag(tag):
@@ -382,34 +383,62 @@ class Script(scripts.Script):
                 images_num = gr.Number(label="请输入要作图的数量", value=1, min=1)
                 scene1 = gr.Textbox(label="请输入你想要的内容，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
                                     max_lines=2)
-                content_num = gr.Number(value=1, min=1, visible=False)
+                scene2 = gr.Textbox(label="请输入你想要的内容2，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene3 = gr.Textbox(label="请输入你想要的内容3，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene4 = gr.Textbox(label="请输入你想要的内容4，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene5 = gr.Textbox(label="请输入你想要的内容5，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene6 = gr.Textbox(label="请输入你想要的内容6，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene7 = gr.Textbox(label="请输入你想要的内容7，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene8 = gr.Textbox(label="请输入你想要的内容8，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene9 = gr.Textbox(label="请输入你想要的内容9，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                    max_lines=2, visible=False)
+                scene10 = gr.Textbox(label="请输入你想要的内容10，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
+                                     max_lines=2, visible=False)
+
+                content_num = gr.Number(label="想要的内容数量", value=1, min=1, visible=False, interactive=False)
                 with gr.Row():
                     btn_add = gr.Button(value="添加内容输入框")
                     btn_rem = gr.Button(value="移除内容输入框", visible=False)
 
-                    def check_num(num):
-                        if num == 1:
-                            return gr.update(visible=False)
-                        else:
-                            return gr.update(visible=True)
+                    def update_content_visible(num, operation):
+                        num = int(num)
 
-                    def add_num(num):
-                        if num < 10:
-                            return gr.update(value=num + 1)
+                        if operation == "add":
+                            num += 1
+                        elif operation == "subtract":
+                            num -= 1
+                        btn_add_visible = num < 10
+                        btn_rem_visible = num > 1
+                        visible_states = [False] * 10
+                        for i in range(num - 1):
+                            visible_states[i] = True
 
-                    def reduce_num(num):
-                        if num > 1:
-                            return gr.update(value=num - 1)
+                        return num, gr.update(visible=btn_add_visible), gr.update(visible=btn_rem_visible), *[gr.update(visible=state) for state in
+                                                                                                              visible_states]
 
-                    btn_add.click(add_num, inputs=[content_num], outputs=[content_num])
-                    btn_add.click(check_num, inputs=[content_num], outputs=[btn_rem])
-                    btn_rem.click(reduce_num, inputs=[content_num], outputs=[content_num])
-                    btn_rem.click(check_num, inputs=[content_num], outputs=[btn_rem])
+                    def on_add_click(num):
+                        return update_content_visible(num, "add")
+
+                    def on_subtract_click(num):
+                        return update_content_visible(num, "subtract")
+
+                    # 使用方法
+                    outputs = [content_num, btn_add, btn_rem] + [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
+                    btn_add.click(on_add_click, inputs=[content_num], outputs=outputs)
+                    btn_rem.click(on_subtract_click, inputs=[content_num], outputs=outputs)
 
                 info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与脚本作者本人无关！！！")
-        return [images_num, scene1, content_num, btn_add, btn_rem, info]
+        return [images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, content_num, btn_add, btn_rem, info]
 
-    def run(self, p, images_num, scene1, info):
+    def run(self, p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, content_num, btn_add, btn_rem,
+            info):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
