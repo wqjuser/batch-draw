@@ -203,27 +203,29 @@ def parse_args(args_str, default=None):
     return arg_dict
 
 
-def mcprocess(p, images_num, scene, is_img2img):
+def assign_scene(images_num, scene_num, current_num, scenes):
+    images_per_scene = images_num // scene_num
+
+    for i in range(scene_num):
+        if current_num < images_per_scene * (i + 1):
+            return scenes[i]
+    return scenes[-1]
+
+
+def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10,
+              content_num, is_img2img):
     first_processed = None
     original_images = []
     parsed_args = {}
     is_real = False
     add_random_prompts = False
-
+    scenes = [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
     for i in range(p.batch_size * p.n_iter):
         original_images.append([])
-    if scene != "":
-        parsed_args = parse_args(scene)
-        index = scene.find("--")
-        if index != -1:
-            scene = scene[:index]
 
     p.do_not_save_grid = True
 
     state.job_count = int(images_num * p.n_iter)
-
-    j = -1
-    file_idx = 0
     frame_count = 0
 
     copy_p = copy.copy(p)
@@ -249,6 +251,13 @@ def mcprocess(p, images_num, scene, is_img2img):
     combined_lora_prompts_string = ", ".join([f"<{prompt}:{weight}>" for prompt, weight in zip(lora_prompts,
                                                                                                lora_weights)])
     for num in range(images_num):
+        scene = assign_scene(images_num, content_num, num, scenes)
+        if scene != "":
+            parsed_args = parse_args(scene)
+            index = scene.find("--")
+            if index != -1:
+                scene = scene[:index]
+
         if state.interrupted:
             state.nextjob()
             break
@@ -402,7 +411,7 @@ class Script(scripts.Script):
                 scene10 = gr.Textbox(label="请输入你想要的内容10，当然你喜欢抽盲盒的话可以什么也不填哦", value='', lines=1,
                                      max_lines=2, visible=False)
 
-                content_num = gr.Number(label="想要的内容数量", value=1, min=1, visible=False, interactive=False)
+                scene_num = gr.Number(label="想要的内容数量", value=1, min=1, visible=False, interactive=False)
                 with gr.Row():
                     btn_add = gr.Button(value="添加内容输入框")
                     btn_rem = gr.Button(value="移除内容输入框", visible=False)
@@ -432,14 +441,14 @@ class Script(scripts.Script):
                         return update_content_visible(num, "subtract")
 
                     # 使用方法
-                    outputs = [content_num, btn_add, btn_rem] + [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
-                    btn_add.click(on_add_click, inputs=[content_num], outputs=outputs)
-                    btn_rem.click(on_subtract_click, inputs=[content_num], outputs=outputs)
+                    outputs = [scene_num, btn_add, btn_rem] + [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
+                    btn_add.click(on_add_click, inputs=[scene_num], outputs=outputs)
+                    btn_rem.click(on_subtract_click, inputs=[scene_num], outputs=outputs)
 
                 info = gr.HTML("<br>声明：！！！本脚本只提供批量作图功能，使用者做的图与脚本作者本人无关！！！")
-        return [images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, content_num, btn_add, btn_rem, info]
+        return [images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, scene_num, btn_add, btn_rem, info]
 
-    def run(self, p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, content_num, btn_add, btn_rem,
+    def run(self, p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, scene_num, btn_add, btn_rem,
             info):
 
         if p.seed == -1:
@@ -449,7 +458,8 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed = mcprocess(p, int(images_num), scene1, self.is_img2img)
+        original_images, processed = mcprocess(p, int(images_num), scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10,
+                                               scene_num,  self.is_img2img)
 
         p.prompt_for_display = processed.prompt
         processed_images_flattened = []
