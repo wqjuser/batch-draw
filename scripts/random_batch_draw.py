@@ -414,10 +414,12 @@ class Script(scripts.Script):
                             num += 1
                         elif operation == "subtract":
                             num -= 1
+
                         btn_add_visible = num < 10
                         btn_rem_visible = num > 1
+
                         visible_states = [False] * 10
-                        for i in range(num - 1):
+                        for i in range(num):
                             visible_states[i] = True
 
                         return num, gr.update(visible=btn_add_visible), gr.update(visible=btn_rem_visible), *[gr.update(visible=state) for state in
