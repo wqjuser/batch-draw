@@ -204,12 +204,13 @@ def parse_args(args_str, default=None):
 
 
 def assign_scene(images_num, scene_num, current_num, scenes):
-    images_per_scene = images_num // scene_num
-    scene_num = int(scene_num)
-    for i in range(scene_num):
-        if current_num < images_per_scene * (i + 1):
-            return scenes[i]
-    return scenes[-1]
+    if images_num > 1:
+        images_per_scene = images_num // scene_num
+        scene_num = int(scene_num)
+        for i in range(scene_num):
+            if current_num < images_per_scene * (i + 1):
+                return scenes[i]
+    return scenes[-1] if images_num > 1 else scenes[0]
 
 
 def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10,
@@ -228,20 +229,19 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
 
     copy_p = copy.copy(p)
     prompts_lists = [pt.camera_perspective_prompts, pt.person_prompts, pt.career_prompts,
-                     pt.facial_features_prompts,
+                     pt.facial_features_prompts, pt.light_prompts,
                      pt.expression_prompts, pt.hair_prompts, pt.decoration_prompts, pt.hat_prompts,
-                     pt.shoes_prompts,
-                     pt.socks_prompts, pt.gesture_prompt, pt.sight_prompts, pt.environment_prompts,
-                     pt.style_prompts,
-                     pt.action_prompts, pt.actions_prompts, pt.clothes_prompts, pt.clothes_prompts2
+                     pt.shoes_prompts, pt.socks_prompts, pt.gesture_prompt, pt.sight_prompts, pt.environment_prompts,
+                     pt.style_prompts, pt.action_prompts, pt.actions_prompts, pt.clothes_prompts, pt.clothes_prompts2
                      ]
     anime_prompts_lists = [pt.anime_characters_prompts, pt.camera_perspective_prompts, pt.person_prompts,
                            pt.career_prompts, pt.facial_features_prompts, pt.expression_prompts, pt.hair_prompts,
                            pt.decoration_prompts, pt.hat_prompts, pt.shoes_prompts, pt.socks_prompts, pt.gesture_prompt,
-                           pt.sight_prompts, pt.environment_prompts, pt.style_prompts, pt.action_prompts,
+                           pt.sight_prompts, pt.environment_prompts, pt.light_prompts, pt.style_prompts, pt.action_prompts,
                            pt.actions_prompts, pt.clothes_prompts, pt.clothes_prompts2
                            ]
-    lora_prompts = ['lora:cuteGirlMix4_v10', 'lora:koreandolllikenessV20_v20', 'lora:taiwanDollLikeness_v10',
+
+    lora_prompts = ['lora:cuteGirlMix4_v10', 'lora:koreandolllikenessV20_v20', 'lora:taiwanDollLikeness_v20',
                     'lora:japanesedolllikenessV1_v15']
     special_index = lora_prompts.index('lora:cuteGirlMix4_v10')
     lora_weights = random_weights(len(lora_prompts), special_index=special_index, special_min=0.4,
@@ -251,6 +251,7 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
     for num in range(images_num):
         is_real = False
         add_random_prompts = False
+        add_styles = False
         scene = assign_scene(images_num, content_num, num, scenes)
         if scene != "":
             parsed_args = parse_args(scene)
@@ -310,6 +311,8 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
                 copy_p.seed = seed_value
             if 'tl' in parsed_args:
                 copy_p.tiling = True
+            if 'as' in parsed_args:
+                add_styles = True
             if is_img2img:
                 if 'ds' in parsed_args:
                     ds_value = float(parsed_args.get('ds'))
@@ -440,7 +443,6 @@ class Script(scripts.Script):
                     def on_subtract_click(num):
                         return update_content_visible(num, "subtract")
 
-                    # 使用方法
                     outputs = [scene_num, btn_add, btn_rem] + [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
                     btn_add.click(on_add_click, inputs=[scene_num], outputs=outputs)
                     btn_rem.click(on_subtract_click, inputs=[scene_num], outputs=outputs)

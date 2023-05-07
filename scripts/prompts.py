@@ -1,6 +1,6 @@
 # real person negative_prompt
 real_person_negative_prompt = 'NSFW, Paintings, sketches, (more than one face), (worst quality:2), (low quality:2), ' \
-                              '(normal quality:2), bad-picture-chill-75v' \
+                              '(normal quality:2), bad-picture-chill-75v, negative_hand-neg' \
                               '(deformed iris, deformed pupils, bad eyes, semi-realistic:1.4), (bad-image-v2-39000, ' \
                               'bad_prompt_version2, bad-hands-5, EasyNegative, ng_deepnegative_v1_75t, ' \
                               'bad-artist-anime:0.7), ' \
@@ -78,10 +78,16 @@ real_person_negative_prompt = 'NSFW, Paintings, sketches, (more than one face), 
                               'safety panties, ' \
                               'safety knickers, beard, furry, pony, pubic hair, mosaic, excrement, faeces, shit'
 
-anime_negative_prompt = 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, ' \
-                        'cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, ' \
-                        'username, blurry, low res,(bad-image-v2-39000, bad_prompt_version2, bad-hands-5, ' \
-                        'EasyNegative, ng_deepnegative_v1_75t, bad-artist-anime:0.7), '
+anime_negative_prompt = '(simple background:1.35), lowres, long neck, out of frame, extra fingers, mutated hands, monochrome, ' \
+                        '((poorly drawn hands)), ((poorly drawn face)), (((mutation))), (((deformed))), ((ugly)), blurry, ((bad anatomy)), ' \
+                        '(((bad proportions))), ((extra limbs)), cloned face, glitchy, bokeh, (((long neck))), ((flat chested)), ' \
+                        '((((visible hand)))), ((((ugly)))), (((duplicate))), ((morbid)), ((mutilated)), [out of frame], extra fingers, ' \
+                        'mutated hands, ((poorly drawn hands)), ((poorly drawn face)), (((mutation))), (((deformed))), ((ugly)), blurry, ' \
+                        '((bad anatomy)), (((bad proportions))), ((extra limbs)), cloned face, (((disfigured))), out of frame, ugly, extra limbs,' \
+                        ' (bad anatomy), gross proportions, (malformed limbs), ((missing arms)), ((missing legs)), (((extra arms))),' \
+                        ' (((extra legs))), mutated hands, (fused fingers), (too many fingers), (((long neck))) red eyes, multiple subjects,' \
+                        ' extra headsbad-image-v2-39000, bad_prompt_version2, bad-hands-5, ' \
+                        'EasyNegative, ng_deepnegative_v1_75t, bad-artist-anime:0.7,  negative_hand-neg'
 
 default_prompt = '(8k, best quality, masterpiece:1.2), best quality, official art, highres, ' \
                  'extremely detailed CG unity 8k wallpaper, extremely detailed,incredibly absurdres' \
@@ -147,8 +153,7 @@ facial_features_prompts = [
     ['fangs', 'canine teeth']
 ]
 expression_prompts = ['expressionless', 'turn pale', 'blush stickers', 'blush', 'blank stare', 'anger vein',
-                      'embarrassed',
-                      'hubrael', 'depressed', 'wince', 'kilesha', 'shaded face', 'pain', 'screaming', 'sigh', 'nervous',
+                      'embarrassed', 'hubrael', 'depressed', 'wince', 'kilesha', 'shaded face', 'pain', 'screaming', 'sigh', 'nervous',
                       'confused', 'scared', 'drunk', 'tears', 'sad', 'angry', 'nose blush', 'serious', 'jitome',
                       'crazy', 'dark_persona', 'smug', 'thinking', 'raised eyebrow', 'light frown', 'frown',
                       'naughty face', 'eyeid pull', 'nosebleed', 'sleepy', 'zzz', 'drooling', 'light smile',
@@ -228,12 +233,11 @@ environment_prompts = [
      'rainbow', 'meteor shower', 'universe'],
     ['sea', 'hills', 'in a meadow', 'on the beach', 'underwater', 'over the sea', 'grove', 'on a desert', 'plateau',
      'cliff', 'canyon', 'oasis', 'bamboo forest', 'glacier', 'floating island', 'volcano', 'savanna', 'waterfall',
-     'stream', 'wasteland', 'rice paddy', 'wheat field', 'flower field', 'flower sea'],
-    ['indoor', 'curtain', 'bed', 'bathroom', 'toilet stall', 'otaku room', 'cafeteria', 'classroom', 'clubroom',
+     'stream', 'wasteland', 'rice paddy', 'wheat field', 'flower field', 'flower sea',
+     'indoor', 'curtain', 'bed', 'bathroom', 'toilet stall', 'otaku room', 'cafeteria', 'classroom', 'clubroom',
      'salon', 'bar', 'izakaya', 'cafe', 'bakery', 'convenience store', 'supermarket', 'bookstore', 'pharmacy',
      'theater', 'movie theater', 'greenhouse', 'dungeon', 'gym', 'infirmary', 'laboratory', 'library', 'workshop',
-     'stage', 'courtroom'],
-    ['castle', 'city', 'waterpark', 'carousel', 'ferris wheel', 'aquarium', 'zoo', 'bowling alley', 'art gallery',
+     'stage', 'courtroom', 'castle', 'city', 'waterpark', 'carousel', 'ferris wheel', 'aquarium', 'zoo', 'bowling alley', 'art gallery',
      'museum', 'planetarium', 'swimming pool', 'stadium', 'temple', 'bus stop', ' train station', 'fountain',
      'playground', 'market stall', 'phone booth', 'railroad tracks', 'airport', 'tunnel'],
     ['new year', 'year of the rabbit', 'valentine', 'lantern festival', 'summer festival', 'tanabata',
@@ -241,19 +245,16 @@ environment_prompts = [
      'colourful glass', 'stain glass', 'Graffiti wall', 'mosaic background', 'liquid background', 'Sputtered water',
      'magic circles', 'fluorescent mushroom forests background', '(((colorful bubble)))']
 ]
+light_prompts = ['rim light', 'Volumetric Lighting', 'glowing neon lights', 'Cinematic Lighting', 'lens flare', 'metallic luster',
+                 'moody lighting', 'Tyndall effect', 'light leaks', 'background light', 'available light']
 style_prompts = [
-    ['(illustration),(paper figure),(lococo),((impasto)),(shiny skin)', '1980s anime', '8 Bit Game', 'disney movie',
-     'goth', '80s movie', 'bubble bobble', 'style of Pixar', 'Polaroid art', 'Kaleidoscope Photography', 'opal render',
-     'chemigram', 'Studio Ghibli', 'dreamlike', '(faux traditional media)', 'genshin impact', 'azur lane',
-     'kantai collection', 'rebecca (cyberpunk)', 'chainsaw man', 'Magic Vortex', '((dieselpunk))', '4koma',
-     'magazine scan', 'album cover', '(lineart)', 'synthwave'],
-    ['monochrome', 'Collage', 'Dalle de verre', 'pixel art', 'Encaustic painting', 'Ink wash painting', 'Mezzotint',
-     'silhouette', 'illustration', '(((ink)))', '((watercolor))', 'illustration', '(((ukiyoe)))', '((sketch))',
-     '((japanese_art))', '((wash painting))', '((ink splashing))', '((color splashing))', '((((dyeing))))',
-     '((chinese style))', '((dyeing))', '((oil painting))', '((impasto))', '(posing sketch)', '(monochrome)', 'sketch',
-     '(monochrome)', '(gray scale)', '(pencil sketch lines)', '(watercolor pencil)'],
-    ['((art nouveau))', '((classicism))', '((futurism))', '((Dadaism))', '((abstract art))', '((ASCII art))'],
-    ['((alphonse mucha))', '((Monet style))'],
-    ['rim light', 'Volumetric Lighting', 'glowing neon lights', 'Cinematic Lighting', 'lens flare', 'metallic luster',
-     'moody lighting', 'Tyndall effect', 'light leaks', 'background light', 'available light']
+    '8 Bit Game', '1980s anime', 'disney movie', 'goth', '80s movie', 'bubble bobble', 'style of Pixar', ' Polaroid art', 'Kaleidoscope Photography',
+    'opal render', 'chemigram', 'Studio Ghibli', 'dreamlike', '(faux traditional media)', 'genshin impact', 'azur lane', 'kantai collection',
+    'rebecca (cyberpunk)', '((dieselpunk))', '4koma', 'magazine scan', 'album cover', 'synthwave',
+    '(illustration),(paper figure),(lococo),((impasto)),(shiny skin)', 'Collage', 'Dalle de verre', 'pixel art', 'Encaustic painting',
+    'Ink wash painting', 'Mezzotint', 'silhouette', 'illustration', '(((ink))), ((watercolor))',
+    'illustration,(((ukiyoe))),((sketch)),((japanese_art))',
+    '((wash painting)),((ink splashing)),((color splashing)),((((dyeing)))),((chinese style))',
+    '((dyeing)),((oil painting)),((impasto))', '((art nouveau))', '((classicism))', '((futurism))', '((Dadaism))', '((abstract art))',
+    '((ASCII art))', '((alphonse mucha))', '((Monet style))'
 ]

@@ -449,8 +449,7 @@ class Script(scripts.Script):
         return not is_img2img
 
     def ui(self, is_img2img):
-        gr.HTML("此脚本可以与controlnet一起使用")
-        gr.HTML("<br>")
+        gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
         with gr.Accordion(label="基础属性，必填项，每一项都不能为空", open=True):
             with gr.Column(variant='panel'):
                 jump = gr.Dropdown(["1", "2", "3", "4", "5"], label="1. 跳帧(1为不跳，2为两帧取一......)", value="1",
