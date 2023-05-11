@@ -1,801 +1,1168 @@
-import copy
-import importlib.util
+import json
+import math
 import os
-import random
-import shlex
-import subprocess
 import sys
-import time
-import traceback
-import gradio as gr
-from PIL import Image, ImageSequence, ImageDraw, ImageFont
-import modules.scripts as scripts
-from modules import images
-from modules.processing import process_images
-from modules.shared import state
+import warnings
+import hashlib
+
+import torch
+import numpy as np
+from PIL import Image, ImageFilter, ImageOps
+import random
+import cv2
+from skimage import exposure
+from typing import Any, Dict, List, Optional
+
+import modules.sd_hijack
+from modules import devices, prompt_parser, masking, sd_samplers, lowvram, generation_parameters_copypaste, script_callbacks, extra_networks, \
+    sd_vae_approx, scripts
+from modules.sd_hijack import model_hijack
+from modules.shared import opts, cmd_opts, state
+import modules.shared as shared
+import modules.paths as paths
+import modules.face_restoration
+import modules.images as images
+import modules.styles
+import modules.sd_models as sd_models
+import modules.sd_vae as sd_vae
+import logging
+from ldm.data.util import AddMiDaS
+from ldm.models.diffusion.ddpm import LatentDepth2ImageDiffusion
+
+from einops import repeat, rearrange
+from blendmodes.blend import blendLayers, BlendType
+
+# some of those options should not be changed at all because they would break the model, so I removed them from options.
+opt_C = 4
+opt_f = 8
 
 
-def process_string_tag(tag):
-    return tag
+def setup_color_correction(image):
+    logging.info("Calibrating color correction.")
+    correction_target = cv2.cvtColor(np.asarray(image.copy()), cv2.COLOR_RGB2LAB)
+    return correction_target
 
 
-def process_int_tag(tag):
-    return int(tag)
+def apply_color_correction(correction, original_image):
+    logging.info("Applying color correction.")
+    image = Image.fromarray(cv2.cvtColor(exposure.match_histograms(
+        cv2.cvtColor(
+            np.asarray(original_image),
+            cv2.COLOR_RGB2LAB
+        ),
+        correction,
+        channel_axis=2
+    ), cv2.COLOR_LAB2RGB).astype("uint8"))
+
+    image = blendLayers(image, original_image, BlendType.LUMINOSITY)
+
+    return image
 
 
-def process_float_tag(tag):
-    return float(tag)
+def apply_overlay(image, paste_loc, index, overlays):
+    if overlays is None or index >= len(overlays):
+        return image
+
+    overlay = overlays[index]
+
+    if paste_loc is not None:
+        x, y, w, h = paste_loc
+        base_image = Image.new('RGBA', (overlay.width, overlay.height))
+        image = images.resize_image(1, image, w, h)
+        base_image.paste(image, (x, y))
+        image = base_image
+
+    image = image.convert('RGBA')
+    image.alpha_composite(overlay)
+    image = image.convert('RGB')
+
+    return image
 
 
-def process_boolean_tag(tag):
-    return True if (tag == "true") else False
+def txt2img_image_conditioning(sd_model, x, width, height):
+    if sd_model.model.conditioning_key in {'hybrid', 'concat'}:  # Inpainting models
+
+        # The "masked-image" in this case will just be all zeros since the entire image is masked.
+        image_conditioning = torch.zeros(x.shape[0], 3, height, width, device=x.device)
+        image_conditioning = sd_model.get_first_stage_encoding(sd_model.encode_first_stage(image_conditioning))
+
+        # Add the fake full 1s mask to the first dimension.
+        image_conditioning = torch.nn.functional.pad(image_conditioning, (0, 0, 0, 0, 1, 0), value=1.0)
+        image_conditioning = image_conditioning.to(x.dtype)
+
+        return image_conditioning
+
+    elif sd_model.model.conditioning_key == "crossattn-adm":  # UnCLIP models
+
+        return x.new_zeros(x.shape[0], 2 * sd_model.noise_augmentor.time_embed.dim, dtype=x.dtype, device=x.device)
+
+    else:
+        # Dummy zero conditioning if we're not using inpainting or unclip models.
+        # Still takes up a bit of memory, but no encoder call.
+        # Pretty sure we can just make this a 1x1 image since its not going to be used besides its batch size.
+        return x.new_zeros(x.shape[0], 5, 1, 1, dtype=x.dtype, device=x.device)
 
 
-prompt_tags = {
-    "sd_model": None,
-    "outpath_samples": process_string_tag,
-    "outpath_grids": process_string_tag,
-    "prompt_for_display": process_string_tag,
-    "prompt": process_string_tag,
-    "negative_prompt": process_string_tag,
-    "styles": process_string_tag,
-    "seed": process_int_tag,
-    "subseed_strength": process_float_tag,
-    "subseed": process_int_tag,
-    "seed_resize_from_h": process_int_tag,
-    "seed_resize_from_w": process_int_tag,
-    "sampler_index": process_int_tag,
-    "batch_size": process_int_tag,
-    "n_iter": process_int_tag,
-    "steps": process_int_tag,
-    "cfg_scale": process_float_tag,
-    "denoising_strength": process_float_tag,
-    "width": process_int_tag,
-    "height": process_int_tag,
-    "restore_faces": process_boolean_tag,
-    "tiling": process_boolean_tag,
-    "do_not_save_samples": process_boolean_tag,
-    "do_not_save_grid": process_boolean_tag
-}
+class StableDiffusionProcessing:
+    """
+    The first set of paramaters: sd_models -> do_not_reload_embeddings represent the minimum required to create a StableDiffusionProcessing
+    """
+
+    def __init__(self, sd_model=None, outpath_samples=None, outpath_grids=None, prompt: str = "", styles: List[str] = None, seed: int = -1,
+                 subseed: int = -1, subseed_strength: float = 0, seed_resize_from_h: int = -1, seed_resize_from_w: int = -1,
+                 seed_enable_extras: bool = True, sampler_name: str = None, batch_size: int = 1, n_iter: int = 1, steps: int = 50,
+                 cfg_scale: float = 7.0, width: int = 512, height: int = 512, restore_faces: bool = False, tiling: bool = False,
+                 do_not_save_samples: bool = False, do_not_save_grid: bool = False, extra_generation_params: Dict[Any, Any] = None,
+                 overlay_images: Any = None, negative_prompt: str = None, eta: float = None, do_not_reload_embeddings: bool = False,
+                 denoising_strength: float = 0, ddim_discretize: str = None, s_min_uncond: float = 0.0, s_churn: float = 0.0, s_tmax: float = None,
+                 s_tmin: float = 0.0, s_noise: float = 1.0, override_settings: Dict[str, Any] = None,
+                 override_settings_restore_afterwards: bool = True, sampler_index: int = None, script_args: list = None):
+        if sampler_index is not None:
+            print("sampler_index argument for StableDiffusionProcessing does not do anything; use sampler_name", file=sys.stderr)
+
+        self.outpath_samples: str = outpath_samples
+        self.outpath_grids: str = outpath_grids
+        self.prompt: str = prompt
+        self.prompt_for_display: str = None
+        self.negative_prompt: str = (negative_prompt or "")
+        self.styles: list = styles or []
+        self.seed: int = seed
+        self.subseed: int = subseed
+        self.subseed_strength: float = subseed_strength
+        self.seed_resize_from_h: int = seed_resize_from_h
+        self.seed_resize_from_w: int = seed_resize_from_w
+        self.sampler_name: str = sampler_name
+        self.batch_size: int = batch_size
+        self.n_iter: int = n_iter
+        self.steps: int = steps
+        self.cfg_scale: float = cfg_scale
+        self.width: int = width
+        self.height: int = height
+        self.restore_faces: bool = restore_faces
+        self.tiling: bool = tiling
+        self.do_not_save_samples: bool = do_not_save_samples
+        self.do_not_save_grid: bool = do_not_save_grid
+        self.extra_generation_params: dict = extra_generation_params or {}
+        self.overlay_images = overlay_images
+        self.eta = eta
+        self.do_not_reload_embeddings = do_not_reload_embeddings
+        self.paste_to = None
+        self.color_corrections = None
+        self.denoising_strength: float = denoising_strength
+        self.sampler_noise_scheduler_override = None
+        self.ddim_discretize = ddim_discretize or opts.ddim_discretize
+        self.s_min_uncond = s_min_uncond or opts.s_min_uncond
+        self.s_churn = s_churn or opts.s_churn
+        self.s_tmin = s_tmin or opts.s_tmin
+        self.s_tmax = s_tmax or float('inf')  # not representable as a standard ui option
+        self.s_noise = s_noise or opts.s_noise
+        self.override_settings = {k: v for k, v in (override_settings or {}).items() if k not in shared.restricted_opts}
+        self.override_settings_restore_afterwards = override_settings_restore_afterwards
+        self.is_using_inpainting_conditioning = False
+        self.disable_extra_networks = False
+
+        if not seed_enable_extras:
+            self.subseed = -1
+            self.subseed_strength = 0
+            self.seed_resize_from_h = 0
+            self.seed_resize_from_w = 0
+
+        self.scripts = None
+        self.script_args = script_args
+        self.all_prompts = None
+        self.all_negative_prompts = None
+        self.all_seeds = None
+        self.all_subseeds = None
+        self.iteration = 0
+        self.is_hr_pass = False
+
+    @property
+    def sd_model(self):
+        return shared.sd_model
+
+    def txt2img_image_conditioning(self, x, width=None, height=None):
+        self.is_using_inpainting_conditioning = self.sd_model.model.conditioning_key in {'hybrid', 'concat'}
+
+        return txt2img_image_conditioning(self.sd_model, x, width or self.width, height or self.height)
+
+    def depth2img_image_conditioning(self, source_image):
+        # Use the AddMiDaS helper to Format our source image to suit the MiDaS model
+        transformer = AddMiDaS(model_type="dpt_hybrid")
+        transformed = transformer({"jpg": rearrange(source_image[0], "c h w -> h w c")})
+        midas_in = torch.from_numpy(transformed["midas_in"][None, ...]).to(device=shared.device)
+        midas_in = repeat(midas_in, "1 ... -> n ...", n=self.batch_size)
+
+        conditioning_image = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(source_image))
+        conditioning = torch.nn.functional.interpolate(
+            self.sd_model.depth_model(midas_in),
+            size=conditioning_image.shape[2:],
+            mode="bicubic",
+            align_corners=False,
+        )
+
+        (depth_min, depth_max) = torch.aminmax(conditioning)
+        conditioning = 2. * (conditioning - depth_min) / (depth_max - depth_min) - 1.
+        return conditioning
+
+    def edit_image_conditioning(self, source_image):
+        conditioning_image = self.sd_model.encode_first_stage(source_image).mode()
+
+        return conditioning_image
+
+    def unclip_image_conditioning(self, source_image):
+        c_adm = self.sd_model.embedder(source_image)
+        if self.sd_model.noise_augmentor is not None:
+            noise_level = 0  # TODO: Allow other noise levels?
+            c_adm, noise_level_emb = self.sd_model.noise_augmentor(c_adm, noise_level=repeat(torch.tensor([noise_level]).to(c_adm.device), '1 -> b',
+                                                                                             b=c_adm.shape[0]))
+            c_adm = torch.cat((c_adm, noise_level_emb), 1)
+        return c_adm
+
+    def inpainting_image_conditioning(self, source_image, latent_image, image_mask=None):
+        self.is_using_inpainting_conditioning = True
+
+        # Handle the different mask inputs
+        if image_mask is not None:
+            if torch.is_tensor(image_mask):
+                conditioning_mask = image_mask
+            else:
+                conditioning_mask = np.array(image_mask.convert("L"))
+                conditioning_mask = conditioning_mask.astype(np.float32) / 255.0
+                conditioning_mask = torch.from_numpy(conditioning_mask[None, None])
+
+                # Inpainting model uses a discretized mask as input, so we round to either 1.0 or 0.0
+                conditioning_mask = torch.round(conditioning_mask)
+        else:
+            conditioning_mask = source_image.new_ones(1, 1, *source_image.shape[-2:])
+
+        # Create another latent image, this time with a masked version of the original input.
+        # Smoothly interpolate between the masked and unmasked latent conditioning image using a parameter.
+        conditioning_mask = conditioning_mask.to(device=source_image.device, dtype=source_image.dtype)
+        conditioning_image = torch.lerp(
+            source_image,
+            source_image * (1.0 - conditioning_mask),
+            getattr(self, "inpainting_mask_weight", shared.opts.inpainting_mask_weight)
+        )
+
+        # Encode the new masked image using first stage of network.
+        conditioning_image = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(conditioning_image))
+
+        # Create the concatenated conditioning tensor to be fed to `c_concat`
+        conditioning_mask = torch.nn.functional.interpolate(conditioning_mask, size=latent_image.shape[-2:])
+        conditioning_mask = conditioning_mask.expand(conditioning_image.shape[0], -1, -1, -1)
+        image_conditioning = torch.cat([conditioning_mask, conditioning_image], dim=1)
+        image_conditioning = image_conditioning.to(shared.device).type(self.sd_model.dtype)
+
+        return image_conditioning
+
+    def img2img_image_conditioning(self, source_image, latent_image, image_mask=None):
+        source_image = devices.cond_cast_float(source_image)
+
+        # HACK: Using introspection as the Depth2Image model doesn't appear to uniquely
+        # identify itself with a field common to all models. The conditioning_key is also hybrid.
+        if isinstance(self.sd_model, LatentDepth2ImageDiffusion):
+            return self.depth2img_image_conditioning(source_image)
+
+        if self.sd_model.cond_stage_key == "edit":
+            return self.edit_image_conditioning(source_image)
+
+        if self.sampler.conditioning_key in {'hybrid', 'concat'}:
+            return self.inpainting_image_conditioning(source_image, latent_image, image_mask=image_mask)
+
+        if self.sampler.conditioning_key == "crossattn-adm":
+            return self.unclip_image_conditioning(source_image)
+
+        # Dummy zero conditioning if we're not using inpainting or depth model.
+        return latent_image.new_zeros(latent_image.shape[0], 5, 1, 1)
+
+    def init(self, all_prompts, all_seeds, all_subseeds):
+        pass
+
+    def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts):
+        raise NotImplementedError()
+
+    def close(self):
+        self.sampler = None
 
 
-def cmdargs(line):
-    args = shlex.split(line)
-    pos = 0
-    res = {}
+class Processed:
+    def __init__(self, p: StableDiffusionProcessing, images_list, seed=-1, info="", subseed=None, all_prompts=None, all_negative_prompts=None,
+                 all_seeds=None, all_subseeds=None, index_of_first_image=0, infotexts=None, comments=""):
+        self.images = images_list
+        self.prompt = p.prompt
+        self.negative_prompt = p.negative_prompt
+        self.seed = seed
+        self.subseed = subseed
+        self.subseed_strength = p.subseed_strength
+        self.info = info
+        self.comments = comments
+        self.width = p.width
+        self.height = p.height
+        self.sampler_name = p.sampler_name
+        self.cfg_scale = p.cfg_scale
+        self.image_cfg_scale = getattr(p, 'image_cfg_scale', None)
+        self.steps = p.steps
+        self.batch_size = p.batch_size
+        self.restore_faces = p.restore_faces
+        self.face_restoration_model = opts.face_restoration_model if p.restore_faces else None
+        self.sd_model_hash = shared.sd_model.sd_model_hash
+        self.seed_resize_from_w = p.seed_resize_from_w
+        self.seed_resize_from_h = p.seed_resize_from_h
+        self.denoising_strength = getattr(p, 'denoising_strength', None)
+        self.extra_generation_params = p.extra_generation_params
+        self.index_of_first_image = index_of_first_image
+        self.styles = p.styles
+        self.job_timestamp = state.job_timestamp
+        self.clip_skip = opts.CLIP_stop_at_last_layers
 
-    while pos < len(args):
-        arg = args[pos]
+        self.eta = p.eta
+        self.ddim_discretize = p.ddim_discretize
+        self.s_churn = p.s_churn
+        self.s_tmin = p.s_tmin
+        self.s_tmax = p.s_tmax
+        self.s_noise = p.s_noise
+        self.sampler_noise_scheduler_override = p.sampler_noise_scheduler_override
+        self.prompt = self.prompt if type(self.prompt) != list else self.prompt[0]
+        self.negative_prompt = self.negative_prompt if type(self.negative_prompt) != list else self.negative_prompt[0]
+        self.seed = int(self.seed if type(self.seed) != list else self.seed[0]) if self.seed is not None else -1
+        self.subseed = int(self.subseed if type(self.subseed) != list else self.subseed[0]) if self.subseed is not None else -1
+        self.is_using_inpainting_conditioning = p.is_using_inpainting_conditioning
 
-        assert arg.startswith("--"), f'must start with "--": {arg}'
-        tag = arg[2:]
+        self.all_prompts = all_prompts or p.all_prompts or [self.prompt]
+        self.all_negative_prompts = all_negative_prompts or p.all_negative_prompts or [self.negative_prompt]
+        self.all_seeds = all_seeds or p.all_seeds or [self.seed]
+        self.all_subseeds = all_subseeds or p.all_subseeds or [self.subseed]
+        self.infotexts = infotexts or [info]
 
-        func = prompt_tags.get(tag, None)
-        assert func, f'unknown commandline option: {arg}'
+    def js(self):
+        obj = {
+            "prompt": self.all_prompts[0],
+            "all_prompts": self.all_prompts,
+            "negative_prompt": self.all_negative_prompts[0],
+            "all_negative_prompts": self.all_negative_prompts,
+            "seed": self.seed,
+            "all_seeds": self.all_seeds,
+            "subseed": self.subseed,
+            "all_subseeds": self.all_subseeds,
+            "subseed_strength": self.subseed_strength,
+            "width": self.width,
+            "height": self.height,
+            "sampler_name": self.sampler_name,
+            "cfg_scale": self.cfg_scale,
+            "steps": self.steps,
+            "batch_size": self.batch_size,
+            "restore_faces": self.restore_faces,
+            "face_restoration_model": self.face_restoration_model,
+            "sd_model_hash": self.sd_model_hash,
+            "seed_resize_from_w": self.seed_resize_from_w,
+            "seed_resize_from_h": self.seed_resize_from_h,
+            "denoising_strength": self.denoising_strength,
+            "extra_generation_params": self.extra_generation_params,
+            "index_of_first_image": self.index_of_first_image,
+            "infotexts": self.infotexts,
+            "styles": self.styles,
+            "job_timestamp": self.job_timestamp,
+            "clip_skip": self.clip_skip,
+            "is_using_inpainting_conditioning": self.is_using_inpainting_conditioning,
+        }
 
-        assert pos + 1 < len(args), f'missing argument for command line option {arg}'
+        return json.dumps(obj)
 
-        val = args[pos + 1]
+    def infotext(self, p: StableDiffusionProcessing, index):
+        return create_infotext(p, self.all_prompts, self.all_seeds, self.all_subseeds, comments=[], position_in_batch=index % self.batch_size,
+                               iteration=index // self.batch_size)
 
-        res[tag] = func(val)
 
-        pos += 2
+# from https://discuss.pytorch.org/t/help-regarding-slerp-function-for-generative-model-sampling/32475/3
+def slerp(val, low, high):
+    low_norm = low / torch.norm(low, dim=1, keepdim=True)
+    high_norm = high / torch.norm(high, dim=1, keepdim=True)
+    dot = (low_norm * high_norm).sum(1)
+
+    if dot.mean() > 0.9995:
+        return low * val + high * (1 - val)
+
+    omega = torch.acos(dot)
+    so = torch.sin(omega)
+    res = (torch.sin((1.0 - val) * omega) / so).unsqueeze(1) * low + (torch.sin(val * omega) / so).unsqueeze(1) * high
+    return res
+
+
+def create_random_tensors(shape, seeds, subseeds=None, subseed_strength=0.0, seed_resize_from_h=0, seed_resize_from_w=0, p=None):
+    eta_noise_seed_delta = opts.eta_noise_seed_delta or 0
+    xs = []
+
+    # if we have multiple seeds, this means we are working with batch size>1; this then
+    # enables the generation of additional tensors with noise that the sampler will use during its processing.
+    # Using those pre-generated tensors instead of simple torch.randn allows a batch with seeds [100, 101] to
+    # produce the same images as with two batches [100], [101].
+    if p is not None and p.sampler is not None and (len(seeds) > 1 and opts.enable_batch_seeds or eta_noise_seed_delta > 0):
+        sampler_noises = [[] for _ in range(p.sampler.number_of_needed_noises(p))]
+    else:
+        sampler_noises = None
+
+    for i, seed in enumerate(seeds):
+        noise_shape = shape if seed_resize_from_h <= 0 or seed_resize_from_w <= 0 else (shape[0], seed_resize_from_h // 8, seed_resize_from_w // 8)
+
+        subnoise = None
+        if subseeds is not None:
+            subseed = 0 if i >= len(subseeds) else subseeds[i]
+
+            subnoise = devices.randn(subseed, noise_shape)
+
+        # randn results depend on device; gpu and cpu get different results for same seed;
+        # the way I see it, it's better to do this on CPU, so that everyone gets same result;
+        # but the original script had it like this, so I do not dare change it for now because
+        # it will break everyone's seeds.
+        noise = devices.randn(seed, noise_shape)
+
+        if subnoise is not None:
+            noise = slerp(subseed_strength, noise, subnoise)
+
+        if noise_shape != shape:
+            x = devices.randn(seed, shape)
+            dx = (shape[2] - noise_shape[2]) // 2
+            dy = (shape[1] - noise_shape[1]) // 2
+            w = noise_shape[2] if dx >= 0 else noise_shape[2] + 2 * dx
+            h = noise_shape[1] if dy >= 0 else noise_shape[1] + 2 * dy
+            tx = 0 if dx < 0 else dx
+            ty = 0 if dy < 0 else dy
+            dx = max(-dx, 0)
+            dy = max(-dy, 0)
+
+            x[:, ty:ty + h, tx:tx + w] = noise[:, dy:dy + h, dx:dx + w]
+            noise = x
+
+        if sampler_noises is not None:
+            cnt = p.sampler.number_of_needed_noises(p)
+
+            if eta_noise_seed_delta > 0:
+                torch.manual_seed(seed + eta_noise_seed_delta)
+
+            for j in range(cnt):
+                sampler_noises[j].append(devices.randn_without_seed(tuple(noise_shape)))
+
+        xs.append(noise)
+
+    if sampler_noises is not None:
+        p.sampler.sampler_noises = [torch.stack(n).to(shared.device) for n in sampler_noises]
+
+    x = torch.stack(xs).to(shared.device)
+    return x
+
+
+def decode_first_stage(model, x):
+    with devices.autocast(disable=x.dtype == devices.dtype_vae):
+        x = model.decode_first_stage(x)
+
+    return x
+
+
+def get_fixed_seed(seed):
+    if seed is None or seed == '' or seed == -1:
+        return int(random.randrange(4294967294))
+
+    return seed
+
+
+def fix_seed(p):
+    p.seed = get_fixed_seed(p.seed)
+    p.subseed = get_fixed_seed(p.subseed)
+
+
+def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iteration=0, position_in_batch=0):
+    index = position_in_batch + iteration * p.batch_size
+
+    clip_skip = getattr(p, 'clip_skip', opts.CLIP_stop_at_last_layers)
+
+    generation_params = {
+        "Steps": p.steps,
+        "Sampler": p.sampler_name,
+        "CFG scale": p.cfg_scale,
+        "Image CFG scale": getattr(p, 'image_cfg_scale', None),
+        "Seed": all_seeds[index],
+        "Face restoration": (opts.face_restoration_model if p.restore_faces else None),
+        "Size": f"{p.width}x{p.height}",
+        "Model hash": getattr(p, 'sd_model_hash',
+                              None if not opts.add_model_hash_to_info or not shared.sd_model.sd_model_hash else shared.sd_model.sd_model_hash),
+        "Model": (
+            None if not opts.add_model_name_to_info or not shared.sd_model.sd_checkpoint_info.model_name else shared.sd_model.sd_checkpoint_info.model_name.replace(
+                ',', '').replace(':', '')),
+        "Variation seed": (None if p.subseed_strength == 0 else all_subseeds[index]),
+        "Variation seed strength": (None if p.subseed_strength == 0 else p.subseed_strength),
+        "Seed resize from": (None if p.seed_resize_from_w == 0 or p.seed_resize_from_h == 0 else f"{p.seed_resize_from_w}x{p.seed_resize_from_h}"),
+        "Denoising strength": getattr(p, 'denoising_strength', None),
+        "Conditional mask weight": getattr(p, "inpainting_mask_weight",
+                                           shared.opts.inpainting_mask_weight) if p.is_using_inpainting_conditioning else None,
+        "Clip skip": None if clip_skip <= 1 else clip_skip,
+        "ENSD": None if opts.eta_noise_seed_delta == 0 else opts.eta_noise_seed_delta,
+        "Init image hash": getattr(p, 'init_img_hash', None),
+        "RNG": opts.randn_source if opts.randn_source != "GPU" else None,
+        "NGMS": None if p.s_min_uncond == 0 else p.s_min_uncond,
+    }
+
+    generation_params.update(p.extra_generation_params)
+
+    generation_params_text = ", ".join(
+        [k if k == v else f'{k}: {generation_parameters_copypaste.quote(v)}' for k, v in generation_params.items() if v is not None])
+
+    negative_prompt_text = "\nNegative prompt: " + p.all_negative_prompts[index] if p.all_negative_prompts[index] else ""
+
+    return f"{all_prompts[index]}{negative_prompt_text}\n{generation_params_text}".strip()
+
+
+def process_images(p: StableDiffusionProcessing) -> Processed:
+    stored_opts = {k: opts.data[k] for k in p.override_settings.keys()}
+
+    try:
+        # if no checkpoint override or the override checkpoint can't be found, remove override entry and load opts checkpoint
+        if sd_models.checkpoint_alisases.get(p.override_settings.get('sd_model_checkpoint')) is None:
+            p.override_settings.pop('sd_model_checkpoint', None)
+            sd_models.reload_model_weights()
+
+        for k, v in p.override_settings.items():
+            setattr(opts, k, v)
+
+            if k == 'sd_model_checkpoint':
+                sd_models.reload_model_weights()
+
+            if k == 'sd_vae':
+                sd_vae.reload_vae_weights()
+
+        res = process_images_inner(p)
+
+    finally:
+        # restore opts to original state
+        if p.override_settings_restore_afterwards:
+            for k, v in stored_opts.items():
+                setattr(opts, k, v)
+
+                if k == 'sd_vae':
+                    sd_vae.reload_vae_weights()
 
     return res
 
 
-def is_installed(package):
-    try:
-        spec = importlib.util.find_spec(package)
-    except ModuleNotFoundError:
-        return False
+def process_images_inner(p: StableDiffusionProcessing) -> Processed:
+    """this is the main loop that both txt2img and img2img use; it calls func_init once inside all the scopes and func_sample once per batch"""
 
-    return spec is not None
+    if type(p.prompt) == list:
+        assert (len(p.prompt) > 0)
+    else:
+        assert p.prompt is not None
 
+    devices.torch_gc()
 
-def run_pip(args, desc=None):
-    index_url = os.environ.get('INDEX_URL', "")
-    python = sys.executable
-    index_url_line = f' --index-url {index_url}' if index_url != '' else ''
-    return run(f'"{python}" -m pip {args} -i https://pypi.douban.com/simple', desc=f"执行操作: {desc}",
-               errdesc=f"Couldn't install {desc}")
+    seed = get_fixed_seed(p.seed)
+    subseed = get_fixed_seed(p.subseed)
 
+    modules.sd_hijack.model_hijack.apply_circular(p.tiling)
+    modules.sd_hijack.model_hijack.clear_comments()
 
-def run(command, desc=None, errdesc=None, custom_env=None):
-    if desc is not None:
-        print(desc)
+    comments = {}
 
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True,
-                            env=os.environ if custom_env is None else custom_env)
+    if type(p.prompt) == list:
+        p.all_prompts = [shared.prompt_styles.apply_styles_to_prompt(x, p.styles) for x in p.prompt]
+    else:
+        p.all_prompts = p.batch_size * p.n_iter * [shared.prompt_styles.apply_styles_to_prompt(p.prompt, p.styles)]
 
-    if result.returncode != 0:
-        message = f"""{errdesc or 'Error running command'}.
-                        Command: {command}
-                        Error code: {result.returncode}
-                        stdout: {result.stdout.decode(encoding="utf8", errors="ignore") if len(result.stdout) > 0
-        else '<empty>'}
-                        stderr: {result.stderr.decode(encoding="utf8", errors="ignore") if len(result.stderr) > 0
-        else '<empty>'}
-                    """
-        raise RuntimeError(message)
+    if type(p.negative_prompt) == list:
+        p.all_negative_prompts = [shared.prompt_styles.apply_negative_styles_to_prompt(x, p.styles) for x in p.negative_prompt]
+    else:
+        p.all_negative_prompts = p.batch_size * p.n_iter * [shared.prompt_styles.apply_negative_styles_to_prompt(p.negative_prompt, p.styles)]
 
-    return result.stdout.decode(encoding="utf8", errors="ignore")
+    if type(seed) == list:
+        p.all_seeds = seed
+    else:
+        p.all_seeds = [int(seed) + (x if p.subseed_strength == 0 else 0) for x in range(len(p.all_prompts))]
 
+    if type(subseed) == list:
+        p.all_subseeds = subseed
+    else:
+        p.all_subseeds = [int(subseed) + x for x in range(len(p.all_prompts))]
 
-def video2gif(input_video, frames):
-    if is_installed('imageio') and is_installed('av'):
-        import imageio
-        import av
+    def infotext(iteration=0, position_in_batch=0):
+        return create_infotext(p, p.all_prompts, p.all_seeds, p.all_subseeds, comments, iteration, position_in_batch)
 
-        # 设置输入和输出文件名和路径
-    input_file = input_video
-    current_time = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
-    output_dir = 'outputs/multiplecontrolgif_gifs'
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    output_file = f"outputs/multiplecontrolgif_gifs/{current_time}.gif"
-    inf = input_file.replace("\\", "/")
-    inf = inf.replace('"', '')
-    print("开始将视频转换为gif请稍后...")
-    container = av.open(inf)
-    video_stream = container.streams.video[0]
-    # 计算需要跳过的帧数
-    duration = 1 / frames  # 转换为指定帧数
-    with imageio.get_reader(inf, 'ffmpeg') as reader:
-        fps = reader.get_meta_data()['fps']
-        print(f"原视频帧数为：每秒{int(fps)}帧,调整的gif帧数为：每秒{frames}帧")
-        # 创建一个新的输出 GIF
-        with imageio.get_writer(output_file, mode='I', duration=duration) as writer:
-            # 循环读取需要的帧，并逐一写为 GIF
-            for i, frame in enumerate(reader):
-                writer.append_data(frame)
-    out_path = os.getcwd() + '/' + output_file
-    container.close()
-    reader.close()
-    print("视频转换gif完成，继续后续步骤")
-    return out_path
+    if os.path.exists(cmd_opts.embeddings_dir) and not p.do_not_reload_embeddings:
+        model_hijack.embedding_db.load_textual_inversion_embeddings()
 
+    if p.scripts is not None:
+        p.scripts.process(p)
 
-def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
-            resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames):
-    inf = file_txt.replace("\\", "/")
-    inf = inf.replace('"', '')
+    infotexts = []
+    output_images = []
 
-    try:
-        if inf == "":
-            raise ValueError("请输入要使用的视频或者gif图片地址")
-        if inf.endswith("mp4"):
-            if mp4_frames > 0:
-                if is_installed("moviepy"):
-                    inf = video2gif(file_txt, mp4_frames)
-            else:
-                raise ValueError("请在功能5里面输入大于0的整数帧数")
+    cached_uc = [None, None]
+    cached_c = [None, None]
 
-        if resize_dir != "":
-            resize_dir = resize_dir.replace("\\", "/")
-            resize_dir = resize_dir.replace('"', '')
-        else:
-            resize_dir = inf
-    except TypeError as e:
-        print(e)
-    finally:
-        gif = Image.open(inf)
-        dura = gif.info['duration']
+    def get_conds_with_caching(function, required_prompts, steps, cache):
+        """
+        Returns the result of calling function(shared.sd_model, required_prompts, steps)
+        using a cache to store the result if the same arguments have been used before.
 
-        if rm_bg:
-            if is_installed("rembg"):
-                import rembg
+        cache is an array containing two elements. The first element is a tuple
+        representing the previously used arguments, or None if no arguments
+        have been used before. The second element is where the previously
+        computed result is stored.
+        """
 
-        # 用户选择修改gif尺寸
-        if resize_input:
-            if width_input > 0 and height_input > 0:
-                print('用户修改了输入的gif尺寸为 %d * %d' % (width_input, height_input))
-                gif = Image.open(resize_gif(inf, resize_dir, width_input, height_input))
-            else:
-                raise ValueError("宽度和高度应该都大于0")
+        if cache[0] is not None and (required_prompts, steps) == cache[0]:
+            return cache[1]
 
-        imgs = [f.copy() for f in ImageSequence.Iterator(gif)]
+        with devices.autocast():
+            cache[1] = function(shared.sd_model, required_prompts, steps)
 
-        if resize_input:
-            print('改变后的gif图的帧数为：', len(imgs))
+        cache[0] = (required_prompts, steps)
+        return cache[1]
 
-        if use_individual_prompts:
-            assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
-            prompt_files = sorted(
-                [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
+    with torch.no_grad(), p.sd_model.ema_scope():
+        with devices.autocast():
+            p.init(p.all_prompts, p.all_seeds, p.all_subseeds)
 
-        first_processed = None
-        original_images = []
-        processed_images = []
-        processed_images2 = []
-        for i in range(p.batch_size * p.n_iter):
-            original_images.append([])
-            processed_images.append([])
-            processed_images2.append([])
+            # for OSX, loading the model during sampling changes the generated picture, so it is loaded here
+            if shared.opts.live_previews_enable and opts.show_progress_type == "Approx NN":
+                sd_vae_approx.model()
 
-        lines = [x.strip() for x in prompt_txt.splitlines()]
-        lines = [x for x in lines if len(x) > 0]
+        if state.job_count == -1:
+            state.job_count = p.n_iter
 
-        p.do_not_save_grid = True
+        extra_network_data = None
+        for n in range(p.n_iter):
+            p.iteration = n
 
-        job_count = 0
-        jobs = []
-
-        for line in lines:
-            if "--" in line:
-                try:
-                    args = cmdargs(line)
-                except Exception as e:
-                    print(f"Error parsing line [line] as commandline:", file=sys.stderr)
-                    print(traceback.format_exc(), file=sys.stderr)
-                    args = {"prompt": line}
-            else:
-                args = {"prompt": line}
-
-            n_iter = args.get("n_iter", 1)
-            job_count += 1
-            jobs.append(args)
-
-        jumps = int(jump)
-        state.job_count = min(int(len(imgs) * p.n_iter / jumps), max_frames)
-
-        j = -1
-        file_idx = 0
-        frame_count = 0
-
-        copy_p = copy.copy(p)
-        for img in imgs:
-            if state.interrupted:
-                state.nextjob()
-                break
             if state.skipped:
                 state.skipped = False
-            state.job = f"{state.job_no + 1} out of {state.job_count}"
-            j = j + 1
-            if j % jumps != 0:
-                continue
-            if frame_count >= max_frames:
+
+            if state.interrupted:
                 break
-            for k, v in args.items():
-                setattr(copy_p, k, v)
-            if use_individual_prompts:
-                if file_idx < len(prompt_files):
-                    prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
-                    # 打开文件，获取文件编码
-                    with open(prompt_file, "rb") as f:
-                        if is_installed('chardet'):
-                            import chardet
-                        result = chardet.detect(f.read())
-                        file_encoding = result['encoding']
-                    with open(prompt_file, "r", encoding=file_encoding) as f:
-                        individual_prompt = f.read().strip()
-                    copy_p.prompt = f"{copy_p.prompt} {individual_prompt}"
-                    file_idx += 1
+
+            prompts = p.all_prompts[n * p.batch_size:(n + 1) * p.batch_size]
+            negative_prompts = p.all_negative_prompts[n * p.batch_size:(n + 1) * p.batch_size]
+            seeds = p.all_seeds[n * p.batch_size:(n + 1) * p.batch_size]
+            subseeds = p.all_subseeds[n * p.batch_size:(n + 1) * p.batch_size]
+
+            if p.scripts is not None:
+                p.scripts.before_process_batch(p, batch_number=n, prompts=prompts, seeds=seeds, subseeds=subseeds)
+
+            if len(prompts) == 0:
+                break
+
+            prompts, extra_network_data = extra_networks.parse_prompts(prompts)
+
+            if not p.disable_extra_networks:
+                with devices.autocast():
+                    extra_networks.activate(p, extra_network_data)
+
+            if p.scripts is not None:
+                p.scripts.process_batch(p, batch_number=n, prompts=prompts, seeds=seeds, subseeds=subseeds)
+
+            # params.txt should be saved after scripts.process_batch, since the
+            # infotext could be modified by that callback
+            # Example: a wildcard processed by process_batch sets an extra model
+            # strength, which is saved as "Model Strength: 1.0" in the infotext
+            if n == 0:
+                with open(os.path.join(paths.data_path, "params.txt"), "w", encoding="utf8") as file:
+                    processed = Processed(p, [], p.seed, "")
+                    file.write(processed.infotext(p, 0))
+
+            step_multiplier = 1
+            if not shared.opts.dont_fix_second_order_samplers_schedule:
+                try:
+                    step_multiplier = 2 if sd_samplers.all_samplers_map.get(p.sampler_name).aliases[0] in ['k_dpmpp_2s_a', 'k_dpmpp_2s_a_ka',
+                                                                                                           'k_dpmpp_sde', 'k_dpmpp_sde_ka', 'k_dpm_2',
+                                                                                                           'k_dpm_2_a', 'k_heun'] else 1
+                except:
+                    pass
+            uc = get_conds_with_caching(prompt_parser.get_learned_conditioning, negative_prompts, p.steps * step_multiplier, cached_uc)
+            c = get_conds_with_caching(prompt_parser.get_multicond_learned_conditioning, prompts, p.steps * step_multiplier, cached_c)
+
+            if len(model_hijack.comments) > 0:
+                for comment in model_hijack.comments:
+                    comments[comment] = 1
+
+            if p.n_iter > 1:
+                shared.state.job = f"Batch {n + 1} out of {p.n_iter}"
+
+            with devices.without_autocast() if devices.unet_needs_upcast else devices.autocast():
+                samples_ddim = p.sample(conditioning=c, unconditional_conditioning=uc, seeds=seeds, subseeds=subseeds,
+                                        subseed_strength=p.subseed_strength, prompts=prompts)
+
+            x_samples_ddim = [decode_first_stage(p.sd_model, samples_ddim[i:i + 1].to(dtype=devices.dtype_vae))[0].cpu() for i in
+                              range(samples_ddim.size(0))]
+            for x in x_samples_ddim:
+                devices.test_for_nans(x, "vae")
+
+            x_samples_ddim = torch.stack(x_samples_ddim).float()
+            x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+
+            del samples_ddim
+
+            if shared.cmd_opts.lowvram or shared.cmd_opts.medvram:
+                lowvram.send_everything_to_cpu()
+
+            devices.torch_gc()
+
+            if p.scripts is not None:
+                p.scripts.postprocess_batch(p, x_samples_ddim, batch_number=n)
+
+            for i, x_sample in enumerate(x_samples_ddim):
+                p.batch_index = i
+
+                x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
+                x_sample = x_sample.astype(np.uint8)
+
+                if p.restore_faces:
+                    if opts.save and not p.do_not_save_samples and opts.save_images_before_face_restoration:
+                        images.save_image(Image.fromarray(x_sample), p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format,
+                                          info=infotext(n, i), p=p, suffix="-before-face-restoration")
+
+                    devices.torch_gc()
+
+                    x_sample = modules.face_restoration.restore_faces(x_sample)
+                    devices.torch_gc()
+
+                image = Image.fromarray(x_sample)
+
+                if p.scripts is not None:
+                    pp = scripts.PostprocessImageArgs(image)
+                    p.scripts.postprocess_image(p, pp)
+                    image = pp.image
+
+                if p.color_corrections is not None and i < len(p.color_corrections):
+                    if opts.save and not p.do_not_save_samples and opts.save_images_before_color_correction:
+                        image_without_cc = apply_overlay(image, p.paste_to, i, p.overlay_images)
+                        images.save_image(image_without_cc, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i),
+                                          p=p, suffix="-before-color-correction")
+                    image = apply_color_correction(p.color_corrections[i], image)
+
+                image = apply_overlay(image, p.paste_to, i, p.overlay_images)
+
+                if opts.samples_save and not p.do_not_save_samples:
+                    images.save_image(image, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i), p=p)
+
+                text = infotext(n, i)
+                infotexts.append(text)
+                if opts.enable_pnginfo:
+                    image.info["parameters"] = text
+                output_images.append(image)
+
+                if hasattr(p, 'mask_for_overlay') and p.mask_for_overlay and any(
+                        [opts.save_mask, opts.save_mask_composite, opts.return_mask, opts.return_mask_composite]):
+                    image_mask = p.mask_for_overlay.convert('RGB')
+                    image_mask_composite = Image.composite(image.convert('RGBA').convert('RGBa'), Image.new('RGBa', image.size),
+                                                           images.resize_image(2, p.mask_for_overlay, image.width, image.height).convert(
+                                                               'L')).convert('RGBA')
+
+                    if opts.save_mask:
+                        images.save_image(image_mask, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i), p=p,
+                                          suffix="-mask")
+
+                    if opts.save_mask_composite:
+                        images.save_image(image_mask_composite, p.outpath_samples, "", seeds[i], prompts[i], opts.samples_format, info=infotext(n, i),
+                                          p=p, suffix="-mask-composite")
+
+                    if opts.return_mask:
+                        output_images.append(image_mask)
+
+                    if opts.return_mask_composite:
+                        output_images.append(image_mask_composite)
+
+            del x_samples_ddim
+
+            devices.torch_gc()
+
+            state.nextjob()
+
+        p.color_corrections = None
+
+        index_of_first_image = 0
+        unwanted_grid_because_of_img_count = len(output_images) < 2 and opts.grid_only_if_multiple
+        if (opts.return_grid or opts.grid_save) and not p.do_not_save_grid and not unwanted_grid_because_of_img_count:
+            grid = images.image_grid(output_images, p.batch_size)
+
+            if opts.return_grid:
+                text = infotext()
+                infotexts.insert(0, text)
+                if opts.enable_pnginfo:
+                    grid.info["parameters"] = text
+                output_images.insert(0, grid)
+                index_of_first_image = 1
+
+            if opts.grid_save:
+                images.save_image(grid, p.outpath_grids, "grid", p.all_seeds[0], p.all_prompts[0], opts.grid_format, info=infotext(),
+                                  short_filename=not opts.grid_extended_filename, p=p, grid=True)
+
+    if not p.disable_extra_networks and extra_network_data:
+        extra_networks.deactivate(p, extra_network_data)
+
+    devices.torch_gc()
+
+    res = Processed(p, output_images, p.all_seeds[0], infotext(), comments="".join(["\n\n" + x for x in comments]), subseed=p.all_subseeds[0],
+                    index_of_first_image=index_of_first_image, infotexts=infotexts)
+
+    if p.scripts is not None:
+        p.scripts.postprocess(p, res)
+
+    return res
+
+
+def old_hires_fix_first_pass_dimensions(width, height):
+    """old algorithm for auto-calculating first pass size"""
+
+    desired_pixel_count = 512 * 512
+    actual_pixel_count = width * height
+    scale = math.sqrt(desired_pixel_count / actual_pixel_count)
+    width = math.ceil(scale * width / 64) * 64
+    height = math.ceil(scale * height / 64) * 64
+
+    return width, height
+
+
+class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
+    sampler = None
+
+    def __init__(self, enable_hr: bool = False, denoising_strength: float = 0.75, firstphase_width: int = 0, firstphase_height: int = 0,
+                 hr_scale: float = 2.0, hr_upscaler: str = None, hr_second_pass_steps: int = 0, hr_resize_x: int = 0, hr_resize_y: int = 0, **kwargs):
+        super().__init__(**kwargs)
+        self.enable_hr = enable_hr
+        self.denoising_strength = denoising_strength
+        self.hr_scale = hr_scale
+        self.hr_upscaler = hr_upscaler
+        self.hr_second_pass_steps = hr_second_pass_steps
+        self.hr_resize_x = hr_resize_x
+        self.hr_resize_y = hr_resize_y
+        self.hr_upscale_to_x = hr_resize_x
+        self.hr_upscale_to_y = hr_resize_y
+
+        if firstphase_width != 0 or firstphase_height != 0:
+            self.hr_upscale_to_x = self.width
+            self.hr_upscale_to_y = self.height
+            self.width = firstphase_width
+            self.height = firstphase_height
+
+        self.truncate_x = 0
+        self.truncate_y = 0
+        self.applied_old_hires_behavior_to = None
+
+    def init(self, all_prompts, all_seeds, all_subseeds):
+        if self.enable_hr:
+            if opts.use_old_hires_fix_width_height and self.applied_old_hires_behavior_to != (self.width, self.height):
+                self.hr_resize_x = self.width
+                self.hr_resize_y = self.height
+                self.hr_upscale_to_x = self.width
+                self.hr_upscale_to_y = self.height
+
+                self.width, self.height = old_hires_fix_first_pass_dimensions(self.width, self.height)
+                self.applied_old_hires_behavior_to = (self.width, self.height)
+
+            if self.hr_resize_x == 0 and self.hr_resize_y == 0:
+                self.extra_generation_params["Hires upscale"] = self.hr_scale
+                self.hr_upscale_to_x = int(self.width * self.hr_scale)
+                self.hr_upscale_to_y = int(self.height * self.hr_scale)
+            else:
+                self.extra_generation_params["Hires resize"] = f"{self.hr_resize_x}x{self.hr_resize_y}"
+
+                if self.hr_resize_y == 0:
+                    self.hr_upscale_to_x = self.hr_resize_x
+                    self.hr_upscale_to_y = self.hr_resize_x * self.height // self.width
+                elif self.hr_resize_x == 0:
+                    self.hr_upscale_to_x = self.hr_resize_y * self.width // self.height
+                    self.hr_upscale_to_y = self.hr_resize_y
                 else:
-                    print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
+                    target_w = self.hr_resize_x
+                    target_h = self.hr_resize_y
+                    src_ratio = self.width / self.height
+                    dst_ratio = self.hr_resize_x / self.hr_resize_y
 
-            copy_p.init_images = [img]
-            processed = process_images(copy_p)
-            if first_processed is None:
-                first_processed = processed
-
-            for i, img1 in enumerate(processed.images):
-                if i > 0:
-                    break
-                original_images[i].append(img1)
-                if rm_bg:
-                    img1 = rembg.remove(img1)
-                    processed_images[i].append(img1)
-                    img2 = Image.new("RGBA", img1.size, (0, 0, 0, 0))
-                    r, g, b, a = img1.split()
-                    img2.paste(img1, (0, 0), mask=a)
-                    processed_images2[i].append(img2)
-                else:
-                    processed_images[i].append(img1)
-                    processed_images2[i].append(img1)
-            frame_count += 1
-
-    return original_images, first_processed, processed_images, processed_images2, dura
-
-
-def resize_gif(input_path, output_path, width, height):
-    with Image.open(input_path) as im:
-        frames = []
-        # resize each frame of the gif
-        for frame in range(im.n_frames):
-            im.seek(frame)
-            resized = im.resize((width, height), resample=Image.LANCZOS)
-            frames.append(resized.copy())
-
-        # save the resized frames as a new gif
-        frames[0].save(output_path, save_all=True, append_images=frames[1:], duration=im.info['duration'], loop=0)
-
-    return output_path
-
-
-# 为图片添加用户指定的背景图
-def add_background_image(foreground_path, background_path, p, processed, multiplecontrolgif_images_folder,
-                         output_prefix="with_background_"):
-    # 获取当前工作目录
-    cwd = os.getcwd()  # 返回字符串类型
-    foreground_path = cwd + "/" + foreground_path[0]
-    foreground_path = foreground_path.replace("\\", "/")
-    foreground_path = foreground_path.replace('"', '')
-    foreground = Image.open(foreground_path).convert('RGBA')
-    background = Image.open(background_path).convert('RGBA')
-    # 调整背景图片的尺寸以适应前景图片
-    background = background.resize(foreground.size)
-    # 合并前景和背景图片
-    combined = Image.alpha_composite(background, foreground)
-    # 保存结果图片
-    output_path = os.path.join(os.path.dirname(foreground_path), output_prefix + os.path.basename(foreground_path))
-    # combined.save(output_path)
-    with_bg_iamge = images.save_image(combined, multiplecontrolgif_images_folder, output_prefix,
-                                      prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p)
-    return with_bg_iamge
-
-
-# 添加文字水印
-def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images, or_images,
-                  text_watermark_color, text_watermark_content, text_watermark_pos, text_watermark_target,
-                  text_watermark_size, text_watermark_font, custom_font, text_font_path, p, processed):
-    # 默认字体 微软雅黑
-    text_font = 'msyh.ttc'
-    if not custom_font:
-        if text_watermark_font == '微软雅黑':
-            text_font = 'msyh.ttc'
-        elif text_watermark_font == '宋体':
-            text_font = 'simsun.ttc'
-        elif text_watermark_font == '黑体':
-            text_font = 'simhei.ttf'
-        elif text_watermark_font == '楷体':
-            text_font = 'simkai.ttf'
-        elif text_watermark_font == '仿宋宋体':
-            text_font = 'simfang.ttf'
-    else:
-        text_font = text_font_path
-        text_font = text_font.replace("\\", "/")
-        text_font = text_font.replace('"', '')
-    # 将16进制的颜色改为RGBA的颜色
-    fill = tuple(int(text_watermark_color.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
-    # 这里存放临时图片
-    tmp_images = []
-    tmp_images1 = []
-    watered_images = []
-    font = ImageFont.truetype(text_font, size=int(text_watermark_size))
-    text_width, text_height = font.getsize(text_watermark_content)
-    if int(text_watermark_target) == 1:
-        need_add_watermark_images = new_images.copy()
-    elif int(text_watermark_target) == 0:
-        need_add_watermark_images = or_images.copy()
-    elif int(text_watermark_target) == 2:
-        need_add_watermark_images = new_images.copy()
-        need_add_watermark_images1 = or_images.copy()
-
-    watermarked_images = []
-    for i in range(len(need_add_watermark_images)):
-        watermarked_images.append([])
-    for i in range(len(need_add_watermark_images1)):
-        watermarked_images.append([])
-
-    for i, img in enumerate(need_add_watermark_images):
-
-        if int(text_watermark_target) == 0:
-            # 这里只是为了拿到宽高，text_overlay_image在int(text_watermark_target) == 0无意义
-            text_overlay_image = Image.new('RGBA', img.size, (0, 0, 0, 0))
-        else:
-            cwd = os.getcwd()
-            bg_path = cwd + "/" + img[0]
-            bg_path = bg_path.replace("\\", "/")
-            bg_path = bg_path.replace('"', '')
-            bg = Image.open(bg_path).convert('RGBA')
-            text_overlay_image = Image.new('RGBA', bg.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(text_overlay_image)
-        x = 0
-        y = 0
-        if int(text_watermark_pos) == 0:
-            x = (text_overlay_image.width - text_width) / 2
-            y = (text_overlay_image.height - text_height) / 2
-        elif int(text_watermark_pos) == 1:
-            x = 10
-            y = 10
-        elif int(text_watermark_pos) == 2:
-            x = text_overlay_image.width - text_width - 10
-            y = 10
-        elif int(text_watermark_pos) == 3:
-            x = 10
-            y = text_overlay_image.height - text_height - 10
-        elif int(text_watermark_pos) == 4:
-            x = text_overlay_image.width - text_width - 10
-            y = text_overlay_image.height - text_height - 10
-        draw.text((x, y), text_watermark_content, font=font, fill=fill)
-        if int(text_watermark_target) == 0:
-            (fullfn, _) = images.save_image(img, p.outpath_samples, "tmp",
-                                            prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p)
-            # 临时图片
-            tmp_images.append(fullfn)
-            original_dir, original_filename = os.path.split(fullfn)
-            original_image = Image.open(fullfn)
-            # 将原始图片转换为RGBA格式
-            original_image = original_image.convert("RGBA")
-            watermarked_image = Image.alpha_composite(original_image, text_overlay_image)
-            original_filename = original_filename.replace("tmp-", "")
-
-        else:
-            watermarked_image = Image.alpha_composite(bg.convert('RGBA'), text_overlay_image)
-            original_dir, original_filename = os.path.split(need_add_watermark_images[i][0])
-
-        watermarked_path = os.path.join(original_dir, f"watermarked_{original_filename}")
-        watermarked_image.save(watermarked_path)
-        img1 = Image.open(watermarked_path)
-        watered_images.append(img1)
-    if int(text_watermark_target) == 2:
-        for i, img in enumerate(need_add_watermark_images1):
-            x = 0
-            y = 0
-            if int(text_watermark_pos) == 0:
-                x = (img.width - text_width) / 2
-                y = (img.height - text_height) / 2
-            elif int(text_watermark_pos) == 1:
-                x = 10
-                y = 10
-            elif int(text_watermark_pos) == 2:
-                x = img.width - text_width - 10
-                y = 10
-            elif int(text_watermark_pos) == 3:
-                x = 10
-                y = img.height - text_height - 10
-            elif int(text_watermark_pos) == 4:
-                x = img.width - text_width - 10
-                y = img.height - text_height - 10
-            # 这里由于拿到的是内存中的图片没有地址，需要先保存再删除,
-            (fullfn, _) = images.save_image(img, p.outpath_samples, "tmp",
-                                            prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p)
-            # 临时图片
-            tmp_images1.append(fullfn)
-            original_dir, original_filename = os.path.split(fullfn)
-            # 打开原始图片
-            original_image = Image.open(fullfn)
-            width, height = original_image.size
-            # 将原始图片转换为RGBA格式
-            original_image = original_image.convert("RGBA")
-            # 创建一个与原始图片相同尺寸的透明图层
-            transparent_layer = Image.new("RGBA", original_image.size, (0, 0, 0, 0))
-            draw = ImageDraw.Draw(transparent_layer)
-            # 在透明图层上绘制水印文字
-            draw.text((x, y), text_watermark_content, font=font, fill=fill)
-            # 将透明图层叠加在原始图片上
-            watermarked_image = Image.alpha_composite(original_image, transparent_layer)
-            # 保存添加了水印的图片
-            original_filename = original_filename.replace("tmp-", "")
-            watermarked_path = os.path.join(original_dir, f"watermarked_{original_filename}")
-            watermarked_image.save(watermarked_path)
-            img1 = Image.open(watermarked_path)
-            watered_images.append(img1)
-    # 删除临时图片
-    for path in tmp_images:
-        os.remove(path)
-    for path in tmp_images1:
-        os.remove(path)
-    for i, img in enumerate(watered_images):
-        watermarked_images[i].append(img)
-    return watermarked_images
-
-
-# 透明背景并添加指定背景
-def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg):
-    # 给脚本自定义图片保存文件夹，不影响SD原本的图片保存逻辑
-    multiplecontrolgif_images_folder = "outputs/multiplecontrolgif_images"
-    if not os.path.exists(multiplecontrolgif_images_folder):
-        os.mkdir(multiplecontrolgif_images_folder)
-    new_images = []
-    final_images = []
-    if rm_bg:
-        for i, img in enumerate(processed_images2[0][0:]):
-            new_image = images.save_image(img, multiplecontrolgif_images_folder, "multiplecontrolgif",
-                                          prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p)
-            new_images.append(new_image)
-        if add_bg:
-            if bg_path == "":
-                raise ValueError("请输入要使用的背景图片地址")
-            bg_path = bg_path.replace("\\", "/")
-            bg_path = bg_path.replace('"', '')
-            for i, img in enumerate(new_images):
-                img1 = add_background_image(new_images[i], bg_path, p, processed, multiplecontrolgif_images_folder)
-                final_images.append(img1)
-        else:
-            final_images = new_images
-    return final_images
-
-
-# 缩放图片
-
-
-class Script(scripts.Script):
-
-    def title(self):
-        return "批量图生图"
-
-    def show(self, is_img2img):
-        return is_img2img
-
-    def ui(self, is_img2img):
-        gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
-        with gr.Accordion(label="基础属性，必填项，每一项都不能为空", open=True):
-            with gr.Column(variant='panel'):
-                jump = gr.Dropdown(["1", "2", "3", "4", "5"], label="1. 跳帧(1为不跳，2为两帧取一......)", value="1")
-                prompt_txt = gr.Textbox(label="2. 默认提示词，将影响各帧", lines=3, max_lines=5, value="")
-                file_txt = gr.Textbox(
-                    label="3. 输入gif或mp4文件全路径(勿出现中文), 若为mp4请勾选功能5并设置帧数默认30帧每秒, 处理mp4会很耗时",
-                    lines=1,
-                    max_lines=2,
-                    value="")
-                max_frames = gr.Number(
-                    label="4. 输入指定的 GIF 帧数 (运行到指定帧数后停止(不会大于GIF的总帧数)，用于用户测试生成图片的效果，最小1帧,测试完成后请输入一个很大的数保证能把GIF所有帧数操作完毕)",
-                    value=666,
-                    min=1
-                )
-        with gr.Accordion(label="附加选项，根据需要使用", open=False):
-            with gr.Column(variant='panel'):
-                mp4togif = gr.Checkbox(label="5. 启用mp4转gif,只有输入为mp4文件时勾选起效")
-
-                def check_moviepy(mp4togif):
-                    if mp4togif:
-                        if is_installed('imageio') and is_installed('av'):
-                            return gr.update(visible=False, value='')
-                        else:
-                            return gr.update(visible=True, value='请点击安装环境')
+                    if src_ratio < dst_ratio:
+                        self.hr_upscale_to_x = self.hr_resize_x
+                        self.hr_upscale_to_y = self.hr_resize_x * self.height // self.width
                     else:
-                        return gr.update(visible=False, value='')
+                        self.hr_upscale_to_x = self.hr_resize_y * self.width // self.height
+                        self.hr_upscale_to_y = self.hr_resize_y
 
-                btn_install_moviepy = gr.Button(value="未安装处理视频的环境，请点击安装", visible=False).style(
-                    full_width=True)
-                mp4togif.change(check_moviepy, inputs=[mp4togif], outputs=[btn_install_moviepy])
+                    self.truncate_x = (self.hr_upscale_to_x - target_w) // opt_f
+                    self.truncate_y = (self.hr_upscale_to_y - target_h) // opt_f
 
-                def install_moviepy():
-                    if is_installed('imageio') and is_installed('av'):
-                        return
-                    print("安装过程：", run_pip("install imageio av", "开始安装环境"))
-                    return gr.update(value="安装完成", visible=False)
+            # special case: the user has chosen to do nothing
+            if self.hr_upscale_to_x == self.width and self.hr_upscale_to_y == self.height:
+                self.enable_hr = False
+                self.denoising_strength = None
+                self.extra_generation_params.pop("Hires upscale", None)
+                self.extra_generation_params.pop("Hires resize", None)
+                return
 
-                def change_btn_ui():
-                    return gr.update(value='安装中,请在控制台查看进度,安装完成按钮将会自动消失', interactive=False)
+            if not state.processing_has_refined_job_count:
+                if state.job_count == -1:
+                    state.job_count = self.n_iter
 
-                # 添加点击事件
-                btn_install_moviepy.click(change_btn_ui, inputs=None, outputs=[btn_install_moviepy],
-                                          show_progress=True)
-                btn_install_moviepy.click(install_moviepy, inputs=None, outputs=[btn_install_moviepy],
-                                          show_progress=True)
-                mp4_frames = gr.Number(
-                    label="输入指定的视频转gif帧数",
-                    value=30,
-                    min=1
-                )
-                use_individual_prompts = gr.Checkbox(
-                    label="6. 为每一帧选择一个提示词文件（非必选） 可以丰富人物表情，但是由于每一张的tag不同会引起视频的人物脸部不太统一",
-                    value=False
-                )
-                prompts_folder = gr.Textbox(
-                    label="输入包含提示词文本文件的文件夹路径(勾选上方单选框起效)",
-                    lines=1,
-                    max_lines=2,
-                    value=""
-                )
+                shared.total_tqdm.updateTotal((self.steps + (self.hr_second_pass_steps or self.steps)) * state.job_count)
+                state.job_count = state.job_count * 2
+                state.processing_has_refined_job_count = True
 
-            with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True):
-                with gr.Column(variant='panel'):
-                    with gr.Row():
-                        rm_bg = gr.Checkbox(label="7. 去除图片的背景仅保留人物?",
-                                            info="需要安装rembg，若未安装请点击下方按钮安装rembg")
-                        save_or = gr.Checkbox(label="8. 是否保留原图",
-                                              info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
+            if self.hr_second_pass_steps:
+                self.extra_generation_params["Hires steps"] = self.hr_second_pass_steps
 
-                    def check_rembg(rm_bg):
-                        if rm_bg:
-                            if is_installed('rembg'):
-                                print("rembg 已安装")
-                                return gr.update(visible=False, value='')
-                            else:
-                                return gr.update(visible=True, value='请点击安装rembg')
-                        else:
-                            return gr.update(visible=False, value='')
+            if self.hr_upscaler is not None:
+                self.extra_generation_params["Hires upscaler"] = self.hr_upscaler
 
-                    btn_install_rembg = gr.Button(value="未安装rembg，请点击安装rembg", visible=False).style(
-                        full_width=True)
-                    rm_bg.change(check_rembg, inputs=[rm_bg], outputs=[btn_install_rembg])
+    def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts):
+        self.sampler = sd_samplers.create_sampler(self.sampler_name, self.sd_model)
 
-                    def install_rembg():
-                        if is_installed("rembg"):
-                            print('已安装rembg无需重复安装')
-                            return
-                        print("安装过程：", run_pip("install rembg chardet", "开始安装rembg"))
-                        return gr.update(value="安装完成", visible=False)
+        latent_scale_mode = shared.latent_upscale_modes.get(self.hr_upscaler,
+                                                            None) if self.hr_upscaler is not None else shared.latent_upscale_modes.get(
+            shared.latent_upscale_default_mode, "nearest")
+        if self.enable_hr and latent_scale_mode is None:
+            assert len([x for x in shared.sd_upscalers if x.name == self.hr_upscaler]) > 0, f"could not find upscaler named {self.hr_upscaler}"
 
-                    def change_btn_ui():
-                        return gr.update(value='安装中,请在控制台查看进度,安装完成按钮将会自动消失', interactive=False)
+        x = create_random_tensors([opt_C, self.height // opt_f, self.width // opt_f], seeds=seeds, subseeds=subseeds,
+                                  subseed_strength=self.subseed_strength, seed_resize_from_h=self.seed_resize_from_h,
+                                  seed_resize_from_w=self.seed_resize_from_w, p=self)
+        samples = self.sampler.sample(self, x, conditioning, unconditional_conditioning, image_conditioning=self.txt2img_image_conditioning(x))
 
-                    # 添加点击事件
-                    btn_install_rembg.click(change_btn_ui, inputs=None, outputs=[btn_install_rembg],
-                                            show_progress=True)
-                    btn_install_rembg.click(install_rembg, inputs=None, outputs=[btn_install_rembg],
-                                            show_progress=True)
+        if not self.enable_hr:
+            return samples
 
-                    add_bg = gr.Checkbox(
-                        label="为透明图片自定义背景图片",
-                        value=False
-                    )
-                    bg_path = gr.Textbox(
-                        label="输入自定义背景图片路径(勾选上方单选框以及功能6起效)",
-                        lines=1, max_lines=2,
-                        value=""
-                    )
+        self.is_hr_pass = True
 
-            with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
-                with gr.Column(variant='panel'):
-                    resize_input = gr.Checkbox(label="9. 调整输入GIF尺寸",
-                                               info="注意尺寸修改后根据情况您需要修改图生图的宽高")
-                    resize_dir = gr.Textbox(
-                        label="输入改变尺寸后的gif文件路径(如d:\\xxx\\xx.gif,勿出现中文)，过程有些许耗时,若勾选了上面调整尺寸这个文本为空将会使用输入路径，这样会覆盖原有的GIF图片",
-                        lines=1, max_lines=2, value="")
-                    with gr.Row():
-                        width_input = gr.Number(label="调整后的宽度", value=0, min=0)
-                        height_input = gr.Number(label="调整后的高度", value=0, min=0)
-                # 暂时不开放此功能
-                with gr.Row(visible=False):
-                    resize_output = gr.Checkbox(
-                        label="9. 调整输出图片的尺寸(!!!不建议使用!!!不建议使用!!!不建议使用!!!)",
-                        info="注意：这里的尺寸修改是直接缩放，可能会影响显示图片效果，无损缩放请使用webui的附加功能进行缩放")
+        target_width = self.hr_upscale_to_x
+        target_height = self.hr_upscale_to_y
 
-                    resize_target = gr.Dropdown(["0", "1", "2", "3"],
-                                                label="调整尺寸对象(0:无,1:原始,2:处理过的,3:全部)",
-                                                value="0")
-                with gr.Row(visible=False):
-                    width_output = gr.Number(label="调整后的宽度", value=0, min=0)
-                    height_output = gr.Number(label="调整后的高度", value=0, min=0)
-                # 暂时不开放此功能
-                with gr.Row(visible=False):
-                    with gr.Column():
-                        make_a_gif = gr.Checkbox(label="10. 合成 GIF 动图(grids文件夹下)", info="可配合帧速率控制选项")
-                    with gr.Column():
-                        frame_rate = gr.Number(
-                            label="输出 GIF 的帧速率 (帧/秒),需启用合成 GIF 动图",
-                            value=1,
-                            min=1,
-                            step=1
-                        )
-                    with gr.Column():
-                        reverse_gif = gr.Checkbox(label="反转 GIF（倒放 GIF）", info="需启用合成 GIF 动图")
-                with gr.Column(variant='panel'):
-                    with gr.Column():
-                        text_watermark = gr.Checkbox(label="10. 添加文字水印", info="自定义文字水印")
-                        with gr.Row():
-                            with gr.Column(scale=8):
-                                with gr.Row():
-                                    text_watermark_font = gr.Dropdown(
-                                        ["微软雅黑", "宋体", "黑体", "楷体", "仿宋宋体"],
-                                        label="内置5种字体,启用自定义后这里失效",
-                                        value="微软雅黑")
-                                    text_watermark_target = gr.Dropdown(["0", "1", "2"],
-                                                                        label="水印添加对象(0:原始,1:透明,2:全部)",
-                                                                        value="0")
-                                    text_watermark_pos = gr.Dropdown(["0", "1", "2", "3", "4"],
-                                                                     label="位置(0:居中,1:左上,2:右上,3:左下,4:右下)",
-                                                                     value="0")
-                            with gr.Column(scale=1):
-                                text_watermark_color = gr.ColorPicker(label="自定义水印颜色")
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            text_watermark_size = gr.Number(label="水印字体大小", value=30, min=30)
-                        with gr.Column(scale=7):
-                            text_watermark_content = gr.Textbox(label="文字水印内容（不要设置过长的文字会遮挡图片）",
-                                                                lines=1,
-                                                                max_lines=1,
-                                                                value="")
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            custom_font = gr.Checkbox(label="启用自定义水印字体", info="自定义水印字体")
-                        with gr.Column(scale=7):
-                            text_font_path = gr.Textbox(
-                                label="输入自定义水印字体路径(勾选左边自定义水印字体单选框以及功能9起效)",
-                                lines=1, max_lines=2,
-                                value=""
-                            )
+        def save_intermediate(image, index):
+            """saves image before applying hires fix, if enabled in options; takes as an argument either an image or batch with latent space images"""
 
-        return [jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
-                btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
-                width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
-                text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
-                text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames]
+            if not opts.save or self.do_not_save_samples or not opts.save_images_before_highres_fix:
+                return
 
-    def run(self, p, jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
-            btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
-            width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
-            text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
-            text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames):
+            if not isinstance(image, Image.Image):
+                image = sd_samplers.sample_to_image(image, index, approximation=0)
 
-        if p.seed == -1:
-            p.seed = int(random.randrange(4294967294))
+            info = create_infotext(self, self.all_prompts, self.all_seeds, self.all_subseeds, [], iteration=self.iteration, position_in_batch=index)
+            images.save_image(image, self.outpath_samples, "", seeds[index], prompts[index], opts.samples_format, info=info,
+                              suffix="-before-highres-fix")
 
-        p.do_not_save_grid = True
+        if latent_scale_mode is not None:
+            for i in range(samples.shape[0]):
+                save_intermediate(samples, i)
 
-        p.do_not_save_samples = not save_or
+            samples = torch.nn.functional.interpolate(samples, size=(target_height // opt_f, target_width // opt_f), mode=latent_scale_mode["mode"],
+                                                      antialias=latent_scale_mode["antialias"])
 
-        p.batch_size = 1
-        p.n_iter = 1
-        original_images, processed, processed_images, processed_images2, dura = process(
-            p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), rm_bg, resize_input,
-            resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output),
-            int(mp4_frames))
-
-        p.prompt_for_display = processed.prompt
-        processed_images_flattened = []
-        if save_or:
-            for row in original_images:
-                processed_images_flattened += row
-
-            if len(processed_images_flattened) == 1:
-                processed.images = processed_images_flattened
+            # Avoid making the inpainting conditioning unless necessary as
+            # this does need some extra compute to decode / encode the image again.
+            if getattr(self, "inpainting_mask_weight", shared.opts.inpainting_mask_weight) < 1.0:
+                image_conditioning = self.img2img_image_conditioning(decode_first_stage(self.sd_model, samples), samples)
             else:
-                processed.images = [images.image_grid(processed_images_flattened,
-                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
-        or_images = []
-        if len(processed.images) == 1:
-            or_images.append(processed.images[0])
+                image_conditioning = self.txt2img_image_conditioning(samples)
         else:
-            for i, img in enumerate(processed.images):
-                if i == 0:
-                    continue
-                or_images.append(processed.images[i])
+            decoded_samples = decode_first_stage(self.sd_model, samples)
+            lowres_samples = torch.clamp((decoded_samples + 1.0) / 2.0, min=0.0, max=1.0)
 
-        if rm_bg:
-            for row in processed_images:
-                processed_images_flattened += row
+            batch_images = []
+            for i, x_sample in enumerate(lowres_samples):
+                x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
+                x_sample = x_sample.astype(np.uint8)
+                image = Image.fromarray(x_sample)
 
-            if len(processed_images_flattened) == 1:
-                processed.images = processed_images_flattened
+                save_intermediate(image, i)
+
+                image = images.resize_image(0, image, target_width, target_height, upscaler_name=self.hr_upscaler)
+                image = np.array(image).astype(np.float32) / 255.0
+                image = np.moveaxis(image, 2, 0)
+                batch_images.append(image)
+
+            decoded_samples = torch.from_numpy(np.array(batch_images))
+            decoded_samples = decoded_samples.to(shared.device)
+            decoded_samples = 2. * decoded_samples - 1.
+
+            samples = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(decoded_samples))
+
+            image_conditioning = self.img2img_image_conditioning(decoded_samples, samples)
+
+        shared.state.nextjob()
+
+        img2img_sampler_name = self.sampler_name
+        if self.sampler_name in ['PLMS', 'UniPC']:  # PLMS/UniPC do not support img2img so we just silently switch to DDIM
+            img2img_sampler_name = 'DDIM'
+        self.sampler = sd_samplers.create_sampler(img2img_sampler_name, self.sd_model)
+
+        samples = samples[:, :, self.truncate_y // 2:samples.shape[2] - (self.truncate_y + 1) // 2,
+                  self.truncate_x // 2:samples.shape[3] - (self.truncate_x + 1) // 2]
+
+        noise = create_random_tensors(samples.shape[1:], seeds=seeds, subseeds=subseeds, subseed_strength=subseed_strength, p=self)
+
+        # GC now before running the next img2img to prevent running out of memory
+        x = None
+        devices.torch_gc()
+
+        samples = self.sampler.sample_img2img(self, samples, noise, conditioning, unconditional_conditioning,
+                                              steps=self.hr_second_pass_steps or self.steps, image_conditioning=image_conditioning)
+
+        self.is_hr_pass = False
+
+        return samples
+
+
+class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
+    sampler = None
+
+    def __init__(self, init_images: list = None, resize_mode: int = 0, denoising_strength: float = 0.75, image_cfg_scale: float = None,
+                 mask: Any = None, mask_blur: int = 4, inpainting_fill: int = 0, inpaint_full_res: bool = True, inpaint_full_res_padding: int = 0,
+                 inpainting_mask_invert: int = 0, initial_noise_multiplier: float = None, **kwargs):
+        super().__init__(**kwargs)
+
+        self.init_images = init_images
+        self.resize_mode: int = resize_mode
+        self.denoising_strength: float = denoising_strength
+        self.image_cfg_scale: float = image_cfg_scale if shared.sd_model.cond_stage_key == "edit" else None
+        self.init_latent = None
+        self.image_mask = mask
+        self.latent_mask = None
+        self.mask_for_overlay = None
+        self.mask_blur = mask_blur
+        self.inpainting_fill = inpainting_fill
+        self.inpaint_full_res = inpaint_full_res
+        self.inpaint_full_res_padding = inpaint_full_res_padding
+        self.inpainting_mask_invert = inpainting_mask_invert
+        self.initial_noise_multiplier = opts.initial_noise_multiplier if initial_noise_multiplier is None else initial_noise_multiplier
+        self.mask = None
+        self.nmask = None
+        self.image_conditioning = None
+
+    def init(self, all_prompts, all_seeds, all_subseeds):
+        self.sampler = sd_samplers.create_sampler(self.sampler_name, self.sd_model)
+        crop_region = None
+
+        image_mask = self.image_mask
+
+        if image_mask is not None:
+            image_mask = image_mask.convert('L')
+
+            if self.inpainting_mask_invert:
+                image_mask = ImageOps.invert(image_mask)
+
+            if self.mask_blur > 0:
+                image_mask = image_mask.filter(ImageFilter.GaussianBlur(self.mask_blur))
+
+            if self.inpaint_full_res:
+                self.mask_for_overlay = image_mask
+                mask = image_mask.convert('L')
+                crop_region = masking.get_crop_region(np.array(mask), self.inpaint_full_res_padding)
+                crop_region = masking.expand_crop_region(crop_region, self.width, self.height, mask.width, mask.height)
+                x1, y1, x2, y2 = crop_region
+
+                mask = mask.crop(crop_region)
+                image_mask = images.resize_image(2, mask, self.width, self.height)
+                self.paste_to = (x1, y1, x2 - x1, y2 - y1)
             else:
-                processed.images = [images.image_grid(processed_images_flattened,
-                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
+                image_mask = images.resize_image(self.resize_mode, image_mask, self.width, self.height)
+                np_mask = np.array(image_mask)
+                np_mask = np.clip((np_mask.astype(np.float32)) * 2, 0, 255).astype(np.uint8)
+                self.mask_for_overlay = Image.fromarray(np_mask)
 
-        need_add_watermark_images = []
-        need_add_watermark_images1 = []
+            self.overlay_images = []
 
-        new_images = remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg)
+        latent_mask = self.latent_mask if self.latent_mask is not None else image_mask
 
-        # 添加文字水印之后的操作
-        if text_watermark:
-            watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
-                                               or_images,
-                                               text_watermark_color, text_watermark_content, text_watermark_pos,
-                                               text_watermark_target,
-                                               text_watermark_size, text_watermark_font, custom_font, text_font_path, p,
-                                               processed)
-            # 添加水印后，只对最终图片进行展示
-            processed_images_flattened = []
-            for row in watermarked_images:
-                processed_images_flattened += row
-            if len(processed_images_flattened) == 1:
-                processed.images = processed_images_flattened
-            else:
-                processed.images = [images.image_grid(processed_images_flattened,
-                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
+        add_color_corrections = opts.img2img_color_correction and self.color_corrections is None
+        if add_color_corrections:
+            self.color_corrections = []
+        imgs = []
+        for img in self.init_images:
 
-        # 需要优化逻辑,功能暂时不开放
-        if make_a_gif:
-            jumps = int(jump)
-            dura = dura * jumps
-            # 调整输出 GIF 的帧速率
-            if frame_rate > 0:
-                dura = int(1000 / frame_rate)
-            # 反转 GIF 的帧顺序
-            if reverse_gif:
-                processed_images2 = processed_images2[::-1]
+            # Save init image
+            if opts.save_init_img:
+                self.init_img_hash = hashlib.md5(img.tobytes()).hexdigest()
+                images.save_image(img, path=opts.outdir_init_images, basename=None, forced_filename=self.init_img_hash, save_to_dirs=False)
 
-            (fullfn, _) = images.save_image(processed.images[0], p.outpath_grids, "grid",
-                                            prompt=p.prompt_for_display, seed=processed.seed, grid=True, p=p)
-            for i, row in enumerate(processed_images2):
-                fullfn = fullfn[:fullfn.rfind(".")] + "_" + str(i) + ".gif"
-                processed_images2[i][0].save(fullfn, save_all=True, append_images=processed_images2[i][1:],
-                                             optimize=False, duration=dura, loop=0, disposal=2, fps=frame_rate)
+            image = images.flatten(img, opts.img2img_background_color)
 
-        return processed
+            if crop_region is None and self.resize_mode != 3:
+                image = images.resize_image(self.resize_mode, image, self.width, self.height)
+
+            if image_mask is not None:
+                image_masked = Image.new('RGBa', (image.width, image.height))
+                image_masked.paste(image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(self.mask_for_overlay.convert('L')))
+
+                self.overlay_images.append(image_masked.convert('RGBA'))
+
+            # crop_region is not None if we are doing inpaint full res
+            if crop_region is not None:
+                image = image.crop(crop_region)
+                image = images.resize_image(2, image, self.width, self.height)
+
+            if image_mask is not None:
+                if self.inpainting_fill != 1:
+                    image = masking.fill(image, latent_mask)
+
+            if add_color_corrections:
+                self.color_corrections.append(setup_color_correction(image))
+
+            image = np.array(image).astype(np.float32) / 255.0
+            image = np.moveaxis(image, 2, 0)
+
+            imgs.append(image)
+
+        if len(imgs) == 1:
+            batch_images = np.expand_dims(imgs[0], axis=0).repeat(self.batch_size, axis=0)
+            if self.overlay_images is not None:
+                self.overlay_images = self.overlay_images * self.batch_size
+
+            if self.color_corrections is not None and len(self.color_corrections) == 1:
+                self.color_corrections = self.color_corrections * self.batch_size
+
+        elif len(imgs) <= self.batch_size:
+            self.batch_size = len(imgs)
+            batch_images = np.array(imgs)
+        else:
+            raise RuntimeError(f"bad number of images passed: {len(imgs)}; expecting {self.batch_size} or less")
+
+        image = torch.from_numpy(batch_images)
+        image = 2. * image - 1.
+        image = image.to(shared.device)
+
+        self.init_latent = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(image))
+
+        if self.resize_mode == 3:
+            self.init_latent = torch.nn.functional.interpolate(self.init_latent, size=(self.height // opt_f, self.width // opt_f), mode="bilinear")
+
+        if image_mask is not None:
+            init_mask = latent_mask
+            latmask = init_mask.convert('RGB').resize((self.init_latent.shape[3], self.init_latent.shape[2]))
+            latmask = np.moveaxis(np.array(latmask, dtype=np.float32), 2, 0) / 255
+            latmask = latmask[0]
+            latmask = np.around(latmask)
+            latmask = np.tile(latmask[None], (4, 1, 1))
+
+            self.mask = torch.asarray(1.0 - latmask).to(shared.device).type(self.sd_model.dtype)
+            self.nmask = torch.asarray(latmask).to(shared.device).type(self.sd_model.dtype)
+
+            # this needs to be fixed to be done in sample() using actual seeds for batches
+            if self.inpainting_fill == 2:
+                self.init_latent = self.init_latent * self.mask + create_random_tensors(self.init_latent.shape[1:],
+                                                                                        all_seeds[0:self.init_latent.shape[0]]) * self.nmask
+            elif self.inpainting_fill == 3:
+                self.init_latent = self.init_latent * self.mask
+
+        self.image_conditioning = self.img2img_image_conditioning(image, self.init_latent, image_mask)
+
+    def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts):
+        x = create_random_tensors([opt_C, self.height // opt_f, self.width // opt_f], seeds=seeds, subseeds=subseeds,
+                                  subseed_strength=self.subseed_strength, seed_resize_from_h=self.seed_resize_from_h,
+                                  seed_resize_from_w=self.seed_resize_from_w, p=self)
+
+        if self.initial_noise_multiplier != 1.0:
+            self.extra_generation_params["Noise multiplier"] = self.initial_noise_multiplier
+            x *= self.initial_noise_multiplier
+
+        samples = self.sampler.sample_img2img(self, self.init_latent, x, conditioning, unconditional_conditioning,
+                                              image_conditioning=self.image_conditioning)
+
+        if self.mask is not None:
+            samples = samples * self.nmask + self.init_latent * self.mask
+
+        del x
+        devices.torch_gc()
+
+        return samples
