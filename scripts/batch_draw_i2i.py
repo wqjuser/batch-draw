@@ -14,6 +14,7 @@ from modules import images
 from modules.processing import process_images
 from modules.shared import state
 from datetime import datetime
+from scripts import prompts_styles as ps
 
 
 def process_string_tag(tag):
@@ -211,7 +212,8 @@ def get_video_total_frame_count(directory):
 def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
             resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames, add_bg, bg_path, custom_font,
             text_font_path, text_watermark, text_watermark_color, text_watermark_content,
-            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or):
+            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or, default_prompt_type,
+            need_default_prompt, need_negative_prompt):
     # First get the number of all tasks, if there are many files, this process will be time-consuming
     is_single = True
     jumps = int(jump)
@@ -236,7 +238,8 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
         dura, first_processed, original_images, processed_images, \
             processed_images2, frames_num, filename = deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt,
                                                                              prompts_folder, resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                                             width_input, jumps)
+                                                                             width_input, jumps, default_prompt_type,
+                                                                             need_default_prompt, need_negative_prompt)
         frames.append(frames_num)
         filenames.append(filename)
         images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
@@ -284,7 +287,8 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                         processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p,
                                                                                          prompt_txt, prompts_folder,
                                                                                          resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                                                         width_input, jumps)
+                                                                                         width_input, jumps, default_prompt_type,
+                                                                                         need_default_prompt, need_negative_prompt)
                     frames.append(frames_num)
                     filenames.append(filename)
                     images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
@@ -324,7 +328,7 @@ def get_file_name_without_extension(file_path):
 
 
 def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt, prompts_folder, resize_dir, resize_input, rm_bg,
-                           use_individual_prompts, width_input, jumps):
+                           use_individual_prompts, width_input, jumps, default_prompt_type, need_default_prompt, need_negative_prompt):
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
     file_name = get_file_name_without_extension(inf)
@@ -404,6 +408,33 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
         frame_count = 0
 
         copy_p = copy.copy(p)
+        if not need_negative_prompt:
+            copy_p.negative_prompt = ps.default_negative_prompts
+        default_prompt_dict = {
+            "基本提示(通用)": ps.default_prompts,
+            "基本提示(通用修手)": ps.default_prompts_fix_hands,
+            "美女专属(真人-女)": ps.default_prompts_for_girl,
+            "五光十色(通用)": ps.default_prompts_colorful,
+            "高达机甲(通用)": ps.default_prompts_gundam,
+            "高达衣服(通用)": ps.default_prompts_gundam_clothes,
+            "软糯糖果(二次元-女)": ps.default_prompts_candy,
+            "盲盒风格(二次元)": ps.default_prompts_blind_box,
+            "汉服-唐(真人-女)": ps.default_prompts_hanfu_tang,
+            "汉服-宋(真人-女)": ps.default_prompts_hanfu_song,
+            "汉服-明(真人-女)": ps.default_prompts_hanfu_ming,
+            "汉服-晋(真人-女)": ps.default_prompts_hanfu_jin,
+            "汉服-汉(真人-女)": ps.default_prompts_hanfu_han,
+            "时尚女孩(通用偏二)": ps.default_prompts_fashion_girl,
+            "胶片风格(真人-女)": ps.default_prompts_pixel,
+            "敦煌风格(真人-女)": ps.default_prompts_dunhuang,
+            "A素体机娘(通用偏二)": ps.default_prompts_A_Mecha_REN,
+            "露西(赛博朋克)": ps.default_prompts_Lucy_Cyberpunk,
+            "jk制服(真人-女)": ps.default_prompts_jk
+        }
+
+        if not need_default_prompt and default_prompt_type in default_prompt_dict:
+            copy_p.prompt = default_prompt_dict[default_prompt_type]
+
         for img in imgs:
             if state.interrupted:
                 state.nextjob()
@@ -742,7 +773,27 @@ class Script(scripts.Script):
         with gr.Accordion(label="基础属性，必填项，每一项都不能为空", open=True):
             with gr.Column(variant='panel'):
                 jump = gr.Dropdown(["1", "2", "3", "4", "5"], label="1. 跳帧(1为不跳，2为两帧取一......)", value="1")
-                prompt_txt = gr.Textbox(label="2. 默认提示词，将影响各帧", lines=3, max_lines=5, value="")
+                with gr.Accordion(label="2. 默认提示词相关", open=True):
+                    default_prompt_type = gr.Dropdown(
+                        [
+                            "基本提示(通用)", "基本提示(通用修手)", "美女专属(真人-女)", "五光十色(通用)", "高达机甲(通用)", "高达衣服(通用)",
+                            "软糯糖果(二次元-女)", "盲盒风格(二次元)", "汉服-唐(真人-女)", "汉服-宋(真人-女)", "汉服-明(真人-女)",
+                            "汉服-晋(真人-女)", "汉服-汉(真人-女)", "时尚女孩(通用偏二)", "胶片风格(真人-女)", "像素风格(二次元)",
+                            "敦煌风格(真人-女)", "A素体机娘(通用偏二)", "露西(赛博朋克)", "jk制服(真人-女)"
+                        ],
+                        label="默认正面提示词类别",
+                        value="基本提示(通用)")
+                    with gr.Row():
+                        need_default_prompt = gr.Checkbox(label="自行输入默认正面提示词(勾选后上面选择将失效)", value=False)
+                        need_negative_prompt = gr.Checkbox(label="自行输入默认负面提示词(勾选后需要自行输入负面提示词)", value=False)
+
+                    prompt_txt = gr.Textbox(label="默认提示词，将影响各帧", lines=3, max_lines=5, value="", visible=False)
+
+                    def is_need_default_prompt(is_need):
+                        return gr.update(visible=is_need)
+
+                    need_default_prompt.change(is_need_default_prompt, inputs=[need_default_prompt], outputs=[prompt_txt])
+
                 file_txt = gr.Textbox(
                     label="3. 输入gif或mp4文件或文件夹全路径(勿出现中文), 若为mp4请勾选功能5并设置帧数默认30帧每秒, 处理mp4会很耗时",
                     lines=1,
@@ -920,13 +971,15 @@ class Script(scripts.Script):
                 btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
                 width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
                 text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
-                text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames]
+                text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames, default_prompt_type,
+                need_default_prompt, need_negative_prompt]
 
     def run(self, p, jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
             btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
             width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
-            text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames):
+            text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames, default_prompt_type,
+            need_default_prompt, need_negative_prompt):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -941,24 +994,25 @@ class Script(scripts.Script):
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), rm_bg, resize_input,
             resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output),
             int(mp4_frames), add_bg, bg_path, custom_font, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
-            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or)
+            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or, default_prompt_type,
+            need_default_prompt, need_negative_prompt)
 
         # Need to optimize the logic, the function is not open for the time being
-        if make_a_gif:
-            jumps = int(jump)
-            dura = dura * jumps
-            # Adjust the frame rate of the output GIF
-            if frame_rate > 0:
-                dura = int(1000 / frame_rate)
-            # Reversing the frame order of a GIF
-            if reverse_gif:
-                processed_images2 = processed_images2[::-1]
-
-            (fullfn, _) = images.save_image(processed.images[0], p.outpath_grids, "grid",
-                                            prompt=p.prompt_for_display, seed=processed.seed, grid=True, p=p)
-            for i, row in enumerate(processed_images2):
-                fullfn = fullfn[:fullfn.rfind(".")] + "_" + str(i) + ".gif"
-                processed_images2[i][0].save(fullfn, save_all=True, append_images=processed_images2[i][1:],
-                                             optimize=False, duration=dura, loop=0, disposal=2, fps=frame_rate)
+        # if make_a_gif:
+        #     jumps = int(jump)
+        #     dura = dura * jumps
+        #     # Adjust the frame rate of the output GIF
+        #     if frame_rate > 0:
+        #         dura = int(1000 / frame_rate)
+        #     # Reversing the frame order of a GIF
+        #     if reverse_gif:
+        #         processed_images2 = processed_images2[::-1]
+        #
+        #     (fullfn, _) = images.save_image(processed.images[0], p.outpath_grids, "grid",
+        #                                     prompt=p.prompt_for_display, seed=processed.seed, grid=True, p=p)
+        #     for i, row in enumerate(processed_images2):
+        #         fullfn = fullfn[:fullfn.rfind(".")] + "_" + str(i) + ".gif"
+        #         processed_images2[i][0].save(fullfn, save_all=True, append_images=processed_images2[i][1:],
+        #                                      optimize=False, duration=dura, loop=0, disposal=2, fps=frame_rate)
 
         return processed
