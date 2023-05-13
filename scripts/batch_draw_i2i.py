@@ -382,7 +382,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                         file_encoding = result['encoding']
                     with open(prompt_file, "r", encoding=file_encoding) as f:
                         individual_prompt = f.read().strip()
-                    copy_p.prompt = f"{copy_p.prompt} {individual_prompt}"
+                    copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
                     file_idx += 1
                 else:
                     print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
@@ -407,7 +407,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                     processed_images[i].append(img1)
                     processed_images2[i].append(img1)
             frame_count += 1
-    state.nextjob()
     return dura, first_processed, original_images, processed_images, processed_images2, frame_count, file_name
 
 
