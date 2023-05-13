@@ -135,7 +135,6 @@ def video2gif(input_video, frames):
         import imageio
         import av
 
-        # 设置输入和输出文件名和路径
     input_file = input_video
     current_time = time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
     output_file = f"{batch_draw_i2i_gifs_folder}/{current_time}.gif"
@@ -143,14 +142,10 @@ def video2gif(input_video, frames):
     inf = inf.replace('"', '')
     print("开始将视频转换为gif请稍后...")
     container = av.open(inf)
-    # 计算需要跳过的帧数
-    duration = 1 / frames  # 转换为指定帧数
+    duration = 1 / frames
     with imageio.get_reader(inf, 'ffmpeg') as reader:
         fps = reader.get_meta_data()['fps']
-        print(f"原视频帧数为：每秒{int(fps)}帧,调整的gif帧数为：每秒{frames}帧")
-        # 创建一个新的输出 GIF
         with imageio.get_writer(output_file, mode='I', duration=duration) as writer:
-            # 循环读取需要的帧，并逐一写为 GIF
             for i, frame in enumerate(reader):
                 writer.append_data(frame)
     out_path = os.getcwd() + '/' + output_file
@@ -179,33 +174,88 @@ def count_subdirectories(path):
     return count
 
 
+def get_gif_frame_count(file_path):
+    image = Image.open(file_path)
+    return image.n_frames
+
+
+def get_video_frame_count(file_path, fps):
+    if is_installed('moviepy'):
+        from moviepy.editor import VideoFileClip
+
+    video = VideoFileClip(file_path)
+    return int(video.duration * fps)
+
+
+def get_gif_total_frame_count(directory):
+    total_frames = 0
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.gif'):
+                file_path = os.path.join(root, file)
+                total_frames += get_gif_frame_count(file_path)
+    return total_frames
+
+
+def get_video_total_frame_count(directory):
+    total_frames = 0
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.mp4'):
+                file_path = os.path.join(root, file)
+                total_frames += get_video_frame_count(file_path)
+    return total_frames
+
+
+# All the image processing is done in this method
 def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
-            resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames):
+            resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames, add_bg, bg_path, custom_font,
+            text_font_path, text_watermark, text_watermark_color, text_watermark_content,
+            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or):
+    # First get the number of all tasks, if there are many files, this process will be time-consuming
     is_single = True
+    jumps = int(jump)
+    inf = file_txt.replace("\\", "/")
+    inf = inf.replace('"', '')
     # If the input address is a single file
     if os.path.isfile(file_txt):
+        if inf == "":
+            raise ValueError("请输入要使用的视频或者gif图片地址")
+        if inf.endswith("mp4"):
+            if mp4_frames > 0:
+                video_frame_counts = get_video_frame_count(inf, mp4_frames)
+                state.job_count = min(int(video_frame_counts * p.n_iter / jumps), max_frames)
+            else:
+                raise ValueError("请在功能5里面输入大于0的整数帧数")
+        elif inf.endswith("gif"):
+            gif_frame_counts = get_gif_frame_count(inf)
+            state.job_count = min(int(gif_frame_counts * p.n_iter / jumps), max_frames)
+
         frames = []
         filenames = []
         dura, first_processed, original_images, processed_images, \
             processed_images2, frames_num, filename = deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt,
                                                                              prompts_folder, resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                                             width_input)
+                                                                             width_input, jumps)
         frames.append(frames_num)
         filenames.append(filename)
+        images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
+                               processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
+                               text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target)
         return original_images, first_processed, processed_images, processed_images2, dura, is_single, frames, filenames
     # If the address entered is a folder
     if os.path.isdir(file_txt):
+        total_gif_frames = get_gif_total_frame_count(inf)
+        total_video_frames = get_video_total_frame_count(inf)
+        total_jobs = total_gif_frames + total_video_frames
+        state.job_count = min(int(total_jobs * p.n_iter / jumps), max_frames)
         gif_count = count_target_files_number(file_txt, "gif")
         mp4_count = count_target_files_number(file_txt, "mp4")
         total = gif_count + mp4_count
         dura = 0
         frames = []
         results = []
-        filenames = []
         processed_list = []
-        original_images = []
-        processed_images = []
-        processed_images2 = []
         # First determine if the cues are enabled for each frame, and if so, determine if the number of folders
         # in the cue folder matches the number of target files in the input address
         if use_individual_prompts:
@@ -222,33 +272,33 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                         hints_subfolder = os.path.join(prompts_folder, name_without_extension)
                         if os.path.isdir(hints_subfolder):
                             result = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p, prompt_txt, hints_subfolder,
-                                                            resize_dir, resize_input, rm_bg, use_individual_prompts, width_input)
+                                                            resize_dir, resize_input, rm_bg, use_individual_prompts, width_input, jumps)
                             results.append(result)
         else:
             for file_name in os.listdir(file_txt):
                 file_path = os.path.join(file_txt, file_name)
                 if os.path.isfile(file_path):
+                    filenames = []
                     abs_path = os.path.abspath(file_path)
-                    result = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p, prompt_txt, prompts_folder,
-                                                    resize_dir, resize_input, rm_bg, use_individual_prompts, width_input)
+                    result = dura, first_processed, original_images, processed_images, \
+                        processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p,
+                                                                                         prompt_txt, prompts_folder,
+                                                                                         resize_dir, resize_input, rm_bg, use_individual_prompts,
+                                                                                         width_input, jumps)
+                    frames.append(frames_num)
+                    filenames.append(filename)
+                    images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
+                                           processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
+                                           text_watermark_content,
+                                           text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target)
                     results.append(result)
-        if len(results) > 1:
-            is_single = False
+
         for result in results:
             dura = result[0]
             processed_list.append(result[1])
-            for or_img in result[2]:
-                original_images.append(or_img)
-            for pr_img in result[3]:
-                processed_images.append(pr_img)
-            for pr_img in result[4]:
-                processed_images2.append(pr_img)
-            frames.append(result[5])
-            for file_name in result[6]:
-                filenames.append(file_name)
-        first_processed = merge_processed_objects(processed_list)
 
-        return original_images, first_processed, processed_images, processed_images2, dura, is_single, frames, filenames
+        first_processed = merge_processed_objects(processed_list)
+        return first_processed
 
 
 def merge_processed_objects(processed_list):
@@ -274,7 +324,7 @@ def get_file_name_without_extension(file_path):
 
 
 def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt, prompts_folder, resize_dir, resize_input, rm_bg,
-                           use_individual_prompts, width_input):
+                           use_individual_prompts, width_input, jumps):
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
     file_name = get_file_name_without_extension(inf)
@@ -348,9 +398,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             n_iter = args.get("n_iter", 1)
             job_count += 1
             jobs.append(args)
-
-        jumps = int(jump)
-        state.job_count = min(int(len(imgs) * p.n_iter / jumps), max_frames)
 
         j = -1
         file_idx = 0
@@ -622,6 +669,66 @@ def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames
     return final_images
 
 
+# Image post-processing
+def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, processed, processed_images,
+                           processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
+                           text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target):
+    p.prompt_for_display = processed.prompt
+    processed_images_flattened = []
+    # here starts the custom image saving logic
+    if save_or:
+        for i, filename in enumerate(filenames):
+            for img in original_images[i]:
+                images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/original_images"
+                if not os.path.exists(images_dir):
+                    os.makedirs(images_dir)
+                images.save_image(img, images_dir, "",
+                                  prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
+        # here is the original picture show
+        for row in original_images:
+            processed_images_flattened += row
+            if len(processed_images_flattened) == 1:
+                processed.images = processed_images_flattened
+            else:
+                processed.images = [images.image_grid(processed_images_flattened,
+                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
+    or_images = []
+    if len(processed.images) == 1:
+        or_images.append(processed.images[0])
+    else:
+        for i, img in enumerate(processed.images):
+            if i == 0:
+                continue
+            or_images.append(processed.images[i])
+    if rm_bg:
+        for row in processed_images:
+            processed_images_flattened += row
+
+        if len(processed_images_flattened) == 1:
+            processed.images = processed_images_flattened
+        else:
+            processed.images = [images.image_grid(processed_images_flattened,
+                                                  rows=p.batch_size * p.n_iter)] + processed_images_flattened
+    need_add_watermark_images = []
+    need_add_watermark_images1 = []
+    new_images = remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames)
+    # Operation after adding a text watermark
+    if text_watermark:
+        watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
+                                           or_images, text_watermark_color, text_watermark_content, text_watermark_pos,
+                                           text_watermark_target, text_watermark_size, text_watermark_font, custom_font,
+                                           text_font_path, p, processed, filenames, frames)
+        # After adding the watermark, only the final image will be displayed
+        processed_images_flattened = []
+        for row in watermarked_images:
+            processed_images_flattened += row
+        if len(processed_images_flattened) == 1:
+            processed.images = processed_images_flattened
+        else:
+            processed.images = [images.image_grid(processed_images_flattened,
+                                                  rows=p.batch_size * p.n_iter)] + processed_images_flattened
+
+
 class Script(scripts.Script):
 
     def title(self):
@@ -648,11 +755,12 @@ class Script(scripts.Script):
                 )
         with gr.Accordion(label="附加选项，根据需要使用", open=False):
             with gr.Column(variant='panel'):
-                mp4togif = gr.Checkbox(label="5. 启用mp4转gif,只有输入为mp4文件时勾选起效")
+                mp4togif = gr.Checkbox(
+                    label="5. 启用mp4转gif,只有输入为mp4文件时勾选起效，启用视频处理会安装一些必要的仓库，首次安装会耗时，如果安装失败请手动安装")
 
                 def check_moviepy(mp4togif):
                     if mp4togif:
-                        if is_installed('imageio') and is_installed('av'):
+                        if is_installed('imageio') and is_installed('av') and is_installed('moviepy'):
                             return gr.update(visible=False, value='')
                         else:
                             return gr.update(visible=True, value='请点击安装环境')
@@ -664,9 +772,9 @@ class Script(scripts.Script):
                 mp4togif.change(check_moviepy, inputs=[mp4togif], outputs=[btn_install_moviepy])
 
                 def install_moviepy():
-                    if is_installed('imageio') and is_installed('av'):
+                    if is_installed('imageio') and is_installed('av') and is_installed('moviepy'):
                         return
-                    print("安装过程：", run_pip("install imageio av", "开始安装环境"))
+                    print("安装过程：", run_pip("install imageio av moviepy", "开始安装环境"))
                     return gr.update(value="安装完成", visible=False)
 
                 def change_btn_ui():
@@ -703,7 +811,6 @@ class Script(scripts.Script):
                     def check_rembg(rm_bg):
                         if rm_bg:
                             if is_installed('rembg'):
-                                print("rembg 已安装")
                                 return gr.update(visible=False, value='')
                             else:
                                 return gr.update(visible=True, value='请点击安装rembg')
@@ -716,9 +823,7 @@ class Script(scripts.Script):
 
                     def install_rembg():
                         if is_installed("rembg"):
-                            print('已安装rembg无需重复安装')
                             return
-                        print("安装过程：", run_pip("install rembg chardet", "开始安装rembg"))
                         return gr.update(value="安装完成", visible=False)
 
                     def change_btn_ui():
@@ -832,70 +937,11 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed, processed_images, processed_images2, dura, is_single, frames, filenames = process(
+        processed = process(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), rm_bg, resize_input,
             resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output),
-            int(mp4_frames))
-
-        p.prompt_for_display = processed.prompt
-        processed_images_flattened = []
-        # here starts the custom image saving logic
-        if save_or:
-            for i, filename in enumerate(filenames):
-                for img in original_images[i]:
-                    images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/original_images"
-                    if not os.path.exists(images_dir):
-                        os.makedirs(images_dir)
-                    images.save_image(img, images_dir, "",
-                                      prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
-            # here is the original picture show
-            for row in original_images:
-                processed_images_flattened += row
-                if len(processed_images_flattened) == 1:
-                    processed.images = processed_images_flattened
-                else:
-                    processed.images = [images.image_grid(processed_images_flattened,
-                                                          rows=p.batch_size * p.n_iter)] + processed_images_flattened
-
-        or_images = []
-        if len(processed.images) == 1:
-            or_images.append(processed.images[0])
-        else:
-            for i, img in enumerate(processed.images):
-                if i == 0:
-                    continue
-                or_images.append(processed.images[i])
-
-        if rm_bg:
-            for row in processed_images:
-                processed_images_flattened += row
-
-            if len(processed_images_flattened) == 1:
-                processed.images = processed_images_flattened
-            else:
-                processed.images = [images.image_grid(processed_images_flattened,
-                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
-
-        need_add_watermark_images = []
-        need_add_watermark_images1 = []
-
-        new_images = remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames)
-
-        # Operation after adding a text watermark
-        if text_watermark:
-            watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
-                                               or_images, text_watermark_color, text_watermark_content, text_watermark_pos,
-                                               text_watermark_target, text_watermark_size, text_watermark_font, custom_font,
-                                               text_font_path, p, processed, filenames, frames)
-            # After adding the watermark, only the final image will be displayed
-            processed_images_flattened = []
-            for row in watermarked_images:
-                processed_images_flattened += row
-            if len(processed_images_flattened) == 1:
-                processed.images = processed_images_flattened
-            else:
-                processed.images = [images.image_grid(processed_images_flattened,
-                                                      rows=p.batch_size * p.n_iter)] + processed_images_flattened
+            int(mp4_frames), add_bg, bg_path, custom_font, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
+            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or)
 
         # Need to optimize the logic, the function is not open for the time being
         if make_a_gif:
