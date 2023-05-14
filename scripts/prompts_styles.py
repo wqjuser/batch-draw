@@ -57,11 +57,11 @@ default_prompts_candy = default_prompts + "braid, white background, bow, teddy b
                                           "glasses, animal ears, stuffed toy, hair bow, stuffed animal, food, earrings, red nails, jewelry, " \
                                           "food-themed hair ornament, hair ornament, simple background, shoes, full body, frilled dress, " \
                                           "red bow, standing on one leg, bangs, looking at viewer, blush, red dress, book, nail polish, fruit," \
-                                          " pink eyes, socks,  food print, ribbon, strawberry, strawberry hair ornament, bear ears, hairclip," \
+                                          " pink eyes, socks, food print, ribbon, strawberry, strawberry hair ornament, bear ears, hairclip," \
                                           " polka dot, standing, long hair, footwear bow, strawberry print, food-themed earrings, brown footwear," \
                                           " heart, round eyewear,<lora:candyStyle:1:MIDD>, "
 
-default_prompts_blind_box = default_prompts + "full body, chibi,<lora:blindbox_V1Mix:1>, "
+default_prompts_blind_box = default_prompts + "full body, chibi, <lora:blindbox_V1Mix:1>, "
 
 default_prompts_hanfu_tang = default_prompts_for_girl + "hanfu, tang style, <lora:hanfu40-beta-3:0.6>, "
 default_prompts_hanfu_ming = default_prompts_for_girl + "hanfu, ming style, <lora:hanfu40-beta-3:0.6>, "

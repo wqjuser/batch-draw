@@ -2,6 +2,7 @@ import copy
 import importlib.util
 import os
 import random
+import re
 import shlex
 import subprocess
 import sys
@@ -211,9 +212,12 @@ def get_video_total_frame_count(directory):
 
 # All the image processing is done in this method
 def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
-            resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames, add_bg, bg_path, custom_font,
-            text_font_path, text_watermark, text_watermark_color, text_watermark_content, text_watermark_font, text_watermark_pos,
-            text_watermark_size, text_watermark_target, save_or, default_prompt_type, need_default_prompt, need_negative_prompt):
+            resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames, add_bg,
+            bg_path, custom_font,
+            text_font_path, text_watermark, text_watermark_color, text_watermark_content, text_watermark_font,
+            text_watermark_pos,
+            text_watermark_size, text_watermark_target, save_or, default_prompt_type, need_default_prompt,
+            need_negative_prompt, need_combine_prompt, combine_prompt_type):
     # First get the number of all tasks, if there are many files, this process will be time-consuming
     is_single = True
     jumps = int(jump)
@@ -236,14 +240,20 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
         frames = []
         filenames = []
         dura, first_processed, original_images, processed_images, \
-            processed_images2, frames_num, filename = deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt,
-                                                                             prompts_folder, resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                                             width_input, jumps, default_prompt_type, need_default_prompt,
-                                                                             need_negative_prompt)
+            processed_images2, frames_num, filename = deal_with_single_image(file_txt, height_input, jump, max_frames,
+                                                                             mp4_frames, p, prompt_txt,
+                                                                             prompts_folder, resize_dir, resize_input,
+                                                                             rm_bg, use_individual_prompts,
+                                                                             width_input, jumps, default_prompt_type,
+                                                                             need_default_prompt,
+                                                                             need_negative_prompt, need_combine_prompt,
+                                                                             combine_prompt_type)
         frames.append(frames_num)
         filenames.append(filename)
-        images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
-                               processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
+        images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed,
+                               processed_images,
+                               processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
+                               text_watermark_content,
                                text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target)
         return first_processed
     # If the address entered is a folder
@@ -274,9 +284,13 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                         name_without_extension = os.path.splitext(base_name)[0]
                         hints_subfolder = os.path.join(prompts_folder, name_without_extension)
                         if os.path.isdir(hints_subfolder):
-                            result = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p, prompt_txt, hints_subfolder,
-                                                            resize_dir, resize_input, rm_bg, use_individual_prompts, width_input, jumps,
-                                                            default_prompt_type, need_default_prompt, need_negative_prompt)
+                            result = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p,
+                                                            prompt_txt, hints_subfolder,
+                                                            resize_dir, resize_input, rm_bg, use_individual_prompts,
+                                                            width_input, jumps,
+                                                            default_prompt_type, need_default_prompt,
+                                                            need_negative_prompt, need_combine_prompt,
+                                                            combine_prompt_type)
                             results.append(result)
         else:
             for file_name in os.listdir(file_txt):
@@ -285,16 +299,24 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                     filenames = []
                     abs_path = os.path.abspath(file_path)
                     result = dura, first_processed, original_images, processed_images, \
-                        processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p,
-                                                                                         prompt_txt, prompts_folder, resize_dir, resize_input, rm_bg,
-                                                                                         use_individual_prompts, width_input, jumps,
-                                                                                         default_prompt_type, need_default_prompt,
+                        processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump,
+                                                                                         max_frames, mp4_frames, p,
+                                                                                         prompt_txt, prompts_folder,
+                                                                                         resize_dir, resize_input,
+                                                                                         rm_bg,
+                                                                                         use_individual_prompts,
+                                                                                         width_input, jumps,
+                                                                                         default_prompt_type,
+                                                                                         need_default_prompt,
                                                                                          need_negative_prompt)
                     frames.append(frames_num)
                     filenames.append(filename)
-                    images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
-                                           processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
-                                           text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size,
+                    images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
+                                           first_processed, processed_images,
+                                           processed_images2, rm_bg, save_or, text_font_path, text_watermark,
+                                           text_watermark_color,
+                                           text_watermark_content, text_watermark_font, text_watermark_pos,
+                                           text_watermark_size,
                                            text_watermark_target)
                     results.append(result)
 
@@ -328,8 +350,41 @@ def get_file_name_without_extension(file_path):
     return name_without_extension
 
 
-def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt, prompts_folder, resize_dir, resize_input, rm_bg,
-                           use_individual_prompts, width_input, jumps, default_prompt_type, need_default_prompt, need_negative_prompt):
+def get_prompts(default_prompt_dict, prompt_keys):
+    keys = [str(int(i)) + '.' for i in prompt_keys.split('+')]  # 根据 '+' 切割并添加 '.' 到每个键
+    result_str = ''
+
+    for key in keys:
+        # 找到字典中以这个键开头的键值对，取出值并加到结果字符串中
+        for dict_key in default_prompt_dict:
+            if dict_key.startswith(key):
+                result_str += default_prompt_dict[dict_key] + ", "
+                break  # 找到一个就跳出循环，不再寻找其他的
+
+    # 确保每个逗号后都有一个空格
+    result_str = re.sub(r',(?!\s)', ', ', result_str)
+
+    # 删除连续的逗号和空格
+    result_str = re.sub(r', , ', ', ', result_str)
+
+    # 用逗号和空格作为分隔符来分割字符串
+    words = re.split(', ', result_str)
+
+    # 移除重复单词
+    final_words = list(dict.fromkeys(words))  # 使用字典的键来去除重复的单词
+
+    # 先将 final_words 列表连接成字符串
+    result_str = ', '.join(final_words)
+    tags = re.findall(r'<.*?>, ', result_str)
+    result_str = re.sub(r'<.*?>, ', '', result_str)
+    result_str += ', '.join(tags)
+    return result_str
+
+
+def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt, prompts_folder,
+                           resize_dir, resize_input, rm_bg,
+                           use_individual_prompts, width_input, jumps, default_prompt_type, need_default_prompt,
+                           need_negative_prompt, need_combine_prompt, combine_prompt_type):
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
     file_name = get_file_name_without_extension(inf)
@@ -382,29 +437,33 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             processed_images2.append([])
 
         default_prompt_dict = {
-            "基本提示(通用)": ps.default_prompts,
-            "基本提示(通用修手)": ps.default_prompts_fix_hands,
-            "美女专属(真人-女)": ps.default_prompts_for_girl,
-            "五光十色(通用)": ps.default_prompts_colorful,
-            "高达机甲(通用)": ps.default_prompts_gundam,
-            "高达衣服(通用)": ps.default_prompts_gundam_clothes,
-            "软糯糖果(二次元-女)": ps.default_prompts_candy,
-            "盲盒风格(二次元)": ps.default_prompts_blind_box,
-            "汉服-唐(真人-女)": ps.default_prompts_hanfu_tang,
-            "汉服-宋(真人-女)": ps.default_prompts_hanfu_song,
-            "汉服-明(真人-女)": ps.default_prompts_hanfu_ming,
-            "汉服-晋(真人-女)": ps.default_prompts_hanfu_jin,
-            "汉服-汉(真人-女)": ps.default_prompts_hanfu_han,
-            "时尚女孩(通用偏二)": ps.default_prompts_fashion_girl,
-            "胶片风格(真人-女)": ps.default_prompts_pixel,
-            "敦煌风格(真人-女)": ps.default_prompts_dunhuang,
-            "A素体机娘(通用偏二)": ps.default_prompts_A_Mecha_REN,
-            "露西(赛博朋克)": ps.default_prompts_Lucy_Cyberpunk,
-            "jk制服(真人-女)": ps.default_prompts_jk
+            "1.基本提示(通用)": ps.default_prompts,
+            "2.基本提示(通用修手)": ps.default_prompts_fix_hands,
+            "3.美女专属(真人-女)": ps.default_prompts_for_girl,
+            "4.五光十色(通用)": ps.default_prompts_colorful,
+            "5.高达机甲(通用)": ps.default_prompts_gundam,
+            "6.高达衣服(通用)": ps.default_prompts_gundam_clothes,
+            "7.软糯糖果(二次元-女)": ps.default_prompts_candy,
+            "8.盲盒风格(二次元)": ps.default_prompts_blind_box,
+            "9.汉服-唐(真人-女)": ps.default_prompts_hanfu_tang,
+            "10.汉服-宋(真人-女)": ps.default_prompts_hanfu_song,
+            "11.汉服-明(真人-女)": ps.default_prompts_hanfu_ming,
+            "12.汉服-晋(真人-女)": ps.default_prompts_hanfu_jin,
+            "13.汉服-汉(真人-女)": ps.default_prompts_hanfu_han,
+            "14.时尚女孩(通用偏二)": ps.default_prompts_fashion_girl,
+            "15.胶片风格(真人-女)": ps.default_prompts_film_girl,
+            "16.胶片风格(真人-女)": ps.default_prompts_pixel,
+            "17.敦煌风格(真人-女)": ps.default_prompts_dunhuang,
+            "18.A素体机娘(通用偏二)": ps.default_prompts_A_Mecha_REN,
+            "19.露西(赛博朋克)": ps.default_prompts_Lucy_Cyberpunk,
+            "20.jk制服(真人-女)": ps.default_prompts_jk
         }
 
         if not need_default_prompt and default_prompt_type in default_prompt_dict:
             prompt_txt = default_prompt_dict[default_prompt_type]
+
+        if not need_default_prompt and need_combine_prompt:
+            prompt_txt = get_prompts(default_prompt_dict, combine_prompt_type)
 
         lines = [x.strip() for x in prompt_txt.splitlines()]
         lines = [x for x in lines if len(x) > 0]
@@ -508,28 +567,25 @@ def resize_gif(input_path, output_path, width, height):
 # Add a user-specified background image to the image
 def add_background_image(foreground_path, background_path, p, processed, filename):
     images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}"
-    # 获取当前工作目录
-    cwd = os.getcwd()  # 返回字符串类型
+    cwd = os.getcwd()
     foreground_path = cwd + "/" + foreground_path[0]
     foreground_path = foreground_path.replace("\\", "/")
     foreground_path = foreground_path.replace('"', '')
     foreground = Image.open(foreground_path).convert('RGBA')
     background = Image.open(background_path).convert('RGBA')
-    # 调整背景图片的尺寸以适应前景图片
     background = background.resize(foreground.size)
-    # 合并前景和背景图片
     combined = Image.alpha_composite(background, foreground)
-    # 保存结果图片
     with_bg_image = images.save_image(combined, f"{images_dir}/{filename}/add_bg_images", "",
-                                      prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
+                                      prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
+                                      save_to_dirs=False, info=processed.info)
     return with_bg_image
 
 
 # Add text watermark
 def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images, or_images,
                   text_watermark_color, text_watermark_content, text_watermark_pos, text_watermark_target,
-                  text_watermark_size, text_watermark_font, custom_font, text_font_path, p, processed, filenames, frames):
-    # 默认字体 微软雅黑
+                  text_watermark_size, text_watermark_font, custom_font, text_font_path, p, processed, filenames,
+                  frames):
     text_font = 'msyh.ttc'
     if not custom_font:
         if text_watermark_font == '微软雅黑':
@@ -546,9 +602,7 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
         text_font = text_font_path
         text_font = text_font.replace("\\", "/")
         text_font = text_font.replace('"', '')
-    # 将16进制的颜色改为RGBA的颜色
     fill = tuple(int(text_watermark_color.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
-    # 这里存放临时图片
     tmp_images = []
     tmp_images1 = []
     watered_images = []
@@ -585,7 +639,6 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
     for j, filename in enumerate(filenames):
         for i, img in enumerate(pictures_list1[j]):
             if int(text_watermark_target) == 0:
-                # 这里只是为了拿到宽高，text_overlay_image在int(text_watermark_target) == 0无意义
                 text_overlay_image = Image.new('RGBA', img.size, (0, 0, 0, 0))
             else:
                 cwd = os.getcwd()
@@ -614,13 +667,15 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
                 y = text_overlay_image.height - text_height - 10
             draw.text((x, y), text_watermark_content, font=font, fill=fill)
             if int(text_watermark_target) == 0:
-                (fullfn, _) = images.save_image(img, f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/watermarked_images", "tmp",
-                                                prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
-                # 临时图片
+                (fullfn, _) = images.save_image(img,
+                                                f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/watermarked_images",
+                                                "tmp",
+                                                prompt=p.prompt_for_display, seed=processed.seed, grid=False,
+                                                p=p,
+                                                save_to_dirs=False, info=processed.info)
                 tmp_images.append(fullfn)
                 original_dir, original_filename = os.path.split(fullfn)
                 original_image = Image.open(fullfn)
-                # 将原始图片转换为RGBA格式
                 original_image = original_image.convert("RGBA")
                 watermarked_image = Image.alpha_composite(original_image, text_overlay_image)
                 original_filename = original_filename.replace("tmp-", "")
@@ -650,8 +705,12 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
                 elif int(text_watermark_pos) == 4:
                     x = img.width - text_width - 10
                     y = img.height - text_height - 10
-                (fullfn, _) = images.save_image(img, f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/watermarked_images", "tmp",
-                                                prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
+                (fullfn, _) = images.save_image(img,
+                                                f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/watermarked_images",
+                                                "tmp",
+                                                prompt=p.prompt_for_display, seed=processed.seed, grid=False,
+                                                p=p,
+                                                save_to_dirs=False, info=processed.info)
                 tmp_images1.append(fullfn)
                 original_dir, original_filename = os.path.split(fullfn)
                 original_image = Image.open(fullfn)
@@ -665,8 +724,6 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
                 watermarked_image.save(watermarked_path)
                 img1 = Image.open(watermarked_path)
                 watered_images.append(img1)
-
-    # 删除临时图片
     for path in tmp_images:
         os.remove(path)
     for path in tmp_images1:
@@ -685,7 +742,8 @@ def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames
         for i, filename in enumerate(filenames):
             for img in processed_images2[i]:
                 new_image = images.save_image(img, f"{images_dir}/{filename}/rm_bg_images", "",
-                                              prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
+                                              prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
+                                              save_to_dirs=False, info=processed.info)
                 new_images.append(new_image)
                 if add_bg:
                     if bg_path == "":
@@ -703,8 +761,10 @@ def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames
 
 
 # Image post-processing
-def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, processed, processed_images,
-                           processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
+def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, processed,
+                           processed_images,
+                           processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
+                           text_watermark_content,
                            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target):
     p.prompt_for_display = processed.prompt
     processed_images_flattened = []
@@ -716,7 +776,8 @@ def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, orig
                 if not os.path.exists(images_dir):
                     os.makedirs(images_dir)
                 images.save_image(img, images_dir, "",
-                                  prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p, save_to_dirs=False)
+                                  prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
+                                  save_to_dirs=False, info=processed.info)
         # here is the original picture show
         for row in original_images:
             processed_images_flattened += row
@@ -778,23 +839,42 @@ class Script(scripts.Script):
                 with gr.Accordion(label="2. 默认提示词相关", open=True):
                     default_prompt_type = gr.Dropdown(
                         [
-                            "基本提示(通用)", "基本提示(通用修手)", "美女专属(真人-女)", "五光十色(通用)", "高达机甲(通用)", "高达衣服(通用)",
-                            "软糯糖果(二次元-女)", "盲盒风格(二次元)", "汉服-唐(真人-女)", "汉服-宋(真人-女)", "汉服-明(真人-女)",
-                            "汉服-晋(真人-女)", "汉服-汉(真人-女)", "时尚女孩(通用偏二)", "胶片风格(真人-女)", "像素风格(二次元)",
-                            "敦煌风格(真人-女)", "A素体机娘(通用偏二)", "露西(赛博朋克)", "jk制服(真人-女)"
+                            "1.基本提示(通用)", "2.基本提示(通用修手)", "3.美女专属(真人-女)", "4.五光十色(通用)",
+                            "5.高达机甲(通用)", "6.高达衣服(通用)",
+                            "7.软糯糖果(二次元-女)", "8.盲盒风格(二次元)", "9.汉服-唐(真人-女)", "10.汉服-宋(真人-女)",
+                            "11.汉服-明(真人-女)", "12.汉服-晋(真人-女)", "13.汉服-汉(真人-女)",
+                            "14.时尚女孩(通用偏二)",
+                            "15.胶片风格(真人-女)", "16.像素风格(二次元)", "17.敦煌风格(真人-女)",
+                            "18.A素体机娘(通用偏二)",
+                            "19.露西(赛博朋克)", "20.jk制服(真人-女)"
                         ],
                         label="默认正面提示词类别",
-                        value="基本提示(通用)")
-                    with gr.Row():
-                        need_default_prompt = gr.Checkbox(label="自行输入默认正面提示词(勾选后上面选择将失效)", value=False)
-                        need_negative_prompt = gr.Checkbox(label="自行输入默认负面提示词(勾选后需要自行输入负面提示词)", value=False)
+                        value="1.基本提示(通用)")
+                    need_combine_prompt = gr.Checkbox(label="需要组合技(组合上方类别)？", value=False)
+                    combine_prompt_type = gr.Textbox(
+                        label="请输入你需要组合的类别组合，例如2+3+4，不要组合过多种类",
+                        visible=False)
 
-                    prompt_txt = gr.Textbox(label="默认提示词，将影响各帧", lines=3, max_lines=5, value="", visible=False)
+                    def is_show_combine(is_show):
+                        return gr.update(visible=is_show)
+
+                    need_combine_prompt.change(is_show_combine, inputs=[need_combine_prompt],
+                                               outputs=[combine_prompt_type])
+
+                    with gr.Row():
+                        need_default_prompt = gr.Checkbox(label="自行输入默认正面提示词(勾选后上面选择将失效)",
+                                                          value=False)
+                        need_negative_prompt = gr.Checkbox(label="自行输入默认负面提示词(勾选后需要自行输入负面提示词)",
+                                                           value=False)
+
+                    prompt_txt = gr.Textbox(label="默认提示词，将影响各帧", lines=3, max_lines=5, value="",
+                                            visible=False)
 
                     def is_need_default_prompt(is_need):
                         return gr.update(visible=is_need)
 
-                    need_default_prompt.change(is_need_default_prompt, inputs=[need_default_prompt], outputs=[prompt_txt])
+                    need_default_prompt.change(is_need_default_prompt, inputs=[need_default_prompt],
+                                               outputs=[prompt_txt])
 
                 file_txt = gr.Textbox(
                     label="3. 输入gif或mp4文件或文件夹全路径(勿出现中文), 若为mp4请勾选功能5并设置帧数默认30帧每秒, 处理mp4会很耗时",
@@ -859,7 +939,8 @@ class Script(scripts.Script):
                     with gr.Row():
                         rm_bg = gr.Checkbox(label="7. 去除图片的背景仅保留人物?",
                                             info="需要安装rembg，若未安装请点击下方按钮安装rembg")
-                        save_or = gr.Checkbox(label="8. 是否保留原图", info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
+                        save_or = gr.Checkbox(label="8. 是否保留原图",
+                                              info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
 
                     def check_rembg(rm_bg):
                         if rm_bg:
@@ -974,14 +1055,14 @@ class Script(scripts.Script):
                 width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
                 text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
                 text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames, default_prompt_type,
-                need_default_prompt, need_negative_prompt]
+                need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type]
 
     def run(self, p, jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
             btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
             width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
             text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames, default_prompt_type,
-            need_default_prompt, need_negative_prompt):
+            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -995,9 +1076,11 @@ class Script(scripts.Script):
         processed = process(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), rm_bg, resize_input,
             resize_dir, int(width_input), int(height_input), resize_output, int(width_output), int(height_output),
-            int(mp4_frames), add_bg, bg_path, custom_font, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
-            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or, default_prompt_type,
-            need_default_prompt, need_negative_prompt)
+            int(mp4_frames), add_bg, bg_path, custom_font, text_font_path, text_watermark, text_watermark_color,
+            text_watermark_content,
+            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
+            default_prompt_type,
+            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type)
 
         # Need to optimize the logic, the function is not open for the time being
         # if make_a_gif:
