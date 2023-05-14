@@ -177,15 +177,16 @@ def count_subdirectories(path):
 
 def get_gif_frame_count(file_path):
     image = Image.open(file_path)
-    return image.n_frames
+    frames = image.n_frames
+    return frames
 
 
 def get_video_frame_count(file_path, fps):
     if is_installed('moviepy'):
         from moviepy.editor import VideoFileClip
-
     video = VideoFileClip(file_path)
-    return int(video.duration * fps)
+    frames = int(video.duration * fps)
+    return frames
 
 
 def get_gif_total_frame_count(directory):
@@ -211,9 +212,8 @@ def get_video_total_frame_count(directory):
 # All the image processing is done in this method
 def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, rm_bg, resize_input,
             resize_dir, width_input, height_input, resize_output, width_output, height_output, mp4_frames, add_bg, bg_path, custom_font,
-            text_font_path, text_watermark, text_watermark_color, text_watermark_content,
-            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or, default_prompt_type,
-            need_default_prompt, need_negative_prompt):
+            text_font_path, text_watermark, text_watermark_color, text_watermark_content, text_watermark_font, text_watermark_pos,
+            text_watermark_size, text_watermark_target, save_or, default_prompt_type, need_default_prompt, need_negative_prompt):
     # First get the number of all tasks, if there are many files, this process will be time-consuming
     is_single = True
     jumps = int(jump)
@@ -238,8 +238,8 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
         dura, first_processed, original_images, processed_images, \
             processed_images2, frames_num, filename = deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt,
                                                                              prompts_folder, resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                                             width_input, jumps, default_prompt_type,
-                                                                             need_default_prompt, need_negative_prompt)
+                                                                             width_input, jumps, default_prompt_type, need_default_prompt,
+                                                                             need_negative_prompt)
         frames.append(frames_num)
         filenames.append(filename)
         images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
@@ -251,10 +251,10 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
         total_gif_frames = get_gif_total_frame_count(inf)
         total_video_frames = get_video_total_frame_count(inf)
         total_jobs = total_gif_frames + total_video_frames
-        state.job_count = min(int(total_jobs * p.n_iter / jumps), max_frames)
         gif_count = count_target_files_number(file_txt, "gif")
         mp4_count = count_target_files_number(file_txt, "mp4")
         total = gif_count + mp4_count
+        state.job_count = min(int(total_jobs * p.n_iter / jumps), max_frames * total)
         dura = 0
         frames = []
         results = []
@@ -275,7 +275,8 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                         hints_subfolder = os.path.join(prompts_folder, name_without_extension)
                         if os.path.isdir(hints_subfolder):
                             result = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p, prompt_txt, hints_subfolder,
-                                                            resize_dir, resize_input, rm_bg, use_individual_prompts, width_input, jumps)
+                                                            resize_dir, resize_input, rm_bg, use_individual_prompts, width_input, jumps,
+                                                            default_prompt_type, need_default_prompt, need_negative_prompt)
                             results.append(result)
         else:
             for file_name in os.listdir(file_txt):
@@ -285,16 +286,16 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                     abs_path = os.path.abspath(file_path)
                     result = dura, first_processed, original_images, processed_images, \
                         processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p,
-                                                                                         prompt_txt, prompts_folder,
-                                                                                         resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                                                         width_input, jumps, default_prompt_type,
-                                                                                         need_default_prompt, need_negative_prompt)
+                                                                                         prompt_txt, prompts_folder, resize_dir, resize_input, rm_bg,
+                                                                                         use_individual_prompts, width_input, jumps,
+                                                                                         default_prompt_type, need_default_prompt,
+                                                                                         need_negative_prompt)
                     frames.append(frames_num)
                     filenames.append(filename)
                     images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
                                            processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
-                                           text_watermark_content,
-                                           text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target)
+                                           text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size,
+                                           text_watermark_target)
                     results.append(result)
 
         for result in results:
