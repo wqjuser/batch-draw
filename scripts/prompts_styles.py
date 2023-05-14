@@ -30,10 +30,9 @@ default_negative_prompts = "Paintings, sketches, negative_hand-neg, (worst quali
                            "fused pantie, poorly drawn pantie, fused cloth, poorly drawn cloth, bad pantie, yellow teeth, thick lips"
 
 default_prompts = "(8k, best quality, masterpiece:1.2), finely detail, official art, incredibly absurdres, huge filesize, ultra-detailed, " \
-                  "highres, extremely detailed, "
+                  "highres, extremely detailed, perfect face, perfect hands, "
 
-default_prompts_fix_hands = "(8k, best quality, masterpiece:1.2), finely detail, official art, incredibly absurdres, huge filesize, " \
-                            "ultra-detailed, highres, extremely detailed, <lyco:GoodHands-beta2:1>"
+default_prompts_fix_hands = default_prompts + "<lyco:GoodHands-beta2:1>, "
 
 default_prompts_for_girl = "(8k, best quality, masterpiece:1.2), (realistic, photo-realistic:1.37), unity, an extremely delicate and beautiful, " \
                            "amazing, finely detail, official art, incredibly absurdres, huge filesize, ultra-detailed, highres, extremely detailed," \
