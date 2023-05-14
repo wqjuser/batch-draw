@@ -245,7 +245,7 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
         images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed, processed_images,
                                processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color, text_watermark_content,
                                text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target)
-        return original_images, first_processed, processed_images, processed_images2, dura, is_single, frames, filenames
+        return first_processed
     # If the address entered is a folder
     if os.path.isdir(file_txt):
         total_gif_frames = get_gif_total_frame_count(inf)
@@ -380,6 +380,31 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             processed_images.append([])
             processed_images2.append([])
 
+        default_prompt_dict = {
+            "基本提示(通用)": ps.default_prompts,
+            "基本提示(通用修手)": ps.default_prompts_fix_hands,
+            "美女专属(真人-女)": ps.default_prompts_for_girl,
+            "五光十色(通用)": ps.default_prompts_colorful,
+            "高达机甲(通用)": ps.default_prompts_gundam,
+            "高达衣服(通用)": ps.default_prompts_gundam_clothes,
+            "软糯糖果(二次元-女)": ps.default_prompts_candy,
+            "盲盒风格(二次元)": ps.default_prompts_blind_box,
+            "汉服-唐(真人-女)": ps.default_prompts_hanfu_tang,
+            "汉服-宋(真人-女)": ps.default_prompts_hanfu_song,
+            "汉服-明(真人-女)": ps.default_prompts_hanfu_ming,
+            "汉服-晋(真人-女)": ps.default_prompts_hanfu_jin,
+            "汉服-汉(真人-女)": ps.default_prompts_hanfu_han,
+            "时尚女孩(通用偏二)": ps.default_prompts_fashion_girl,
+            "胶片风格(真人-女)": ps.default_prompts_pixel,
+            "敦煌风格(真人-女)": ps.default_prompts_dunhuang,
+            "A素体机娘(通用偏二)": ps.default_prompts_A_Mecha_REN,
+            "露西(赛博朋克)": ps.default_prompts_Lucy_Cyberpunk,
+            "jk制服(真人-女)": ps.default_prompts_jk
+        }
+
+        if not need_default_prompt and default_prompt_type in default_prompt_dict:
+            prompt_txt = default_prompt_dict[default_prompt_type]
+
         lines = [x.strip() for x in prompt_txt.splitlines()]
         lines = [x for x in lines if len(x) > 0]
 
@@ -410,30 +435,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
         copy_p = copy.copy(p)
         if not need_negative_prompt:
             copy_p.negative_prompt = ps.default_negative_prompts
-        default_prompt_dict = {
-            "基本提示(通用)": ps.default_prompts,
-            "基本提示(通用修手)": ps.default_prompts_fix_hands,
-            "美女专属(真人-女)": ps.default_prompts_for_girl,
-            "五光十色(通用)": ps.default_prompts_colorful,
-            "高达机甲(通用)": ps.default_prompts_gundam,
-            "高达衣服(通用)": ps.default_prompts_gundam_clothes,
-            "软糯糖果(二次元-女)": ps.default_prompts_candy,
-            "盲盒风格(二次元)": ps.default_prompts_blind_box,
-            "汉服-唐(真人-女)": ps.default_prompts_hanfu_tang,
-            "汉服-宋(真人-女)": ps.default_prompts_hanfu_song,
-            "汉服-明(真人-女)": ps.default_prompts_hanfu_ming,
-            "汉服-晋(真人-女)": ps.default_prompts_hanfu_jin,
-            "汉服-汉(真人-女)": ps.default_prompts_hanfu_han,
-            "时尚女孩(通用偏二)": ps.default_prompts_fashion_girl,
-            "胶片风格(真人-女)": ps.default_prompts_pixel,
-            "敦煌风格(真人-女)": ps.default_prompts_dunhuang,
-            "A素体机娘(通用偏二)": ps.default_prompts_A_Mecha_REN,
-            "露西(赛博朋克)": ps.default_prompts_Lucy_Cyberpunk,
-            "jk制服(真人-女)": ps.default_prompts_jk
-        }
-
-        if not need_default_prompt and default_prompt_type in default_prompt_dict:
-            copy_p.prompt = default_prompt_dict[default_prompt_type]
 
         for img in imgs:
             if state.interrupted:
