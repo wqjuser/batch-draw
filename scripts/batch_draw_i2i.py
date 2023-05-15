@@ -200,13 +200,13 @@ def get_gif_total_frame_count(directory):
     return total_frames
 
 
-def get_video_total_frame_count(directory):
+def get_video_total_frame_count(directory, fps):
     total_frames = 0
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith('.mp4'):
                 file_path = os.path.join(root, file)
-                total_frames += get_video_frame_count(file_path)
+                total_frames += get_video_frame_count(file_path, fps)
     return total_frames
 
 
@@ -259,7 +259,7 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
     # If the address entered is a folder
     if os.path.isdir(file_txt):
         total_gif_frames = get_gif_total_frame_count(inf)
-        total_video_frames = get_video_total_frame_count(inf)
+        total_video_frames = get_video_total_frame_count(inf, int(mp4_frames))
         total_jobs = total_gif_frames + total_video_frames
         gif_count = count_target_files_number(file_txt, "gif")
         mp4_count = count_target_files_number(file_txt, "mp4")
@@ -284,13 +284,25 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                         name_without_extension = os.path.splitext(base_name)[0]
                         hints_subfolder = os.path.join(prompts_folder, name_without_extension)
                         if os.path.isdir(hints_subfolder):
-                            result = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames, p,
-                                                            prompt_txt, hints_subfolder,
-                                                            resize_dir, resize_input, rm_bg, use_individual_prompts,
-                                                            width_input, jumps,
-                                                            default_prompt_type, need_default_prompt,
-                                                            need_negative_prompt, need_combine_prompt,
-                                                            combine_prompt_type)
+                            filenames = []
+                            result = dura, first_processed, original_images, processed_images, \
+                                processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames,
+                                                                                                 p, prompt_txt, hints_subfolder,
+                                                                                                 resize_dir, resize_input, rm_bg,
+                                                                                                 use_individual_prompts,
+                                                                                                 width_input, jumps,
+                                                                                                 default_prompt_type, need_default_prompt,
+                                                                                                 need_negative_prompt, need_combine_prompt,
+                                                                                                 combine_prompt_type)
+                            frames.append(frames_num)
+                            filenames.append(filename)
+                            images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
+                                                   first_processed, processed_images,
+                                                   processed_images2, rm_bg, save_or, text_font_path, text_watermark,
+                                                   text_watermark_color,
+                                                   text_watermark_content, text_watermark_font, text_watermark_pos,
+                                                   text_watermark_size,
+                                                   text_watermark_target)
                             results.append(result)
         else:
             for file_name in os.listdir(file_txt):
@@ -303,12 +315,11 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                                                                                          max_frames, mp4_frames, p,
                                                                                          prompt_txt, prompts_folder,
                                                                                          resize_dir, resize_input,
-                                                                                         rm_bg,
-                                                                                         use_individual_prompts,
+                                                                                         rm_bg, use_individual_prompts,
                                                                                          width_input, jumps,
-                                                                                         default_prompt_type,
-                                                                                         need_default_prompt,
-                                                                                         need_negative_prompt)
+                                                                                         default_prompt_type, need_default_prompt,
+                                                                                         need_negative_prompt, need_combine_prompt,
+                                                                                         combine_prompt_type)
                     frames.append(frames_num)
                     filenames.append(filename)
                     images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
@@ -351,33 +362,22 @@ def get_file_name_without_extension(file_path):
 
 
 def get_prompts(default_prompt_dict, prompt_keys):
-    keys = [str(int(i)) + '.' for i in prompt_keys.split('+')]  # 根据 '+' 切割并添加 '.' 到每个键
+    keys = [str(int(i)) + '.' for i in prompt_keys.split('+')]
     result_str = ''
 
     for key in keys:
-        # 找到字典中以这个键开头的键值对，取出值并加到结果字符串中
         for dict_key in default_prompt_dict:
             if dict_key.startswith(key):
                 result_str += default_prompt_dict[dict_key] + ", "
-                break  # 找到一个就跳出循环，不再寻找其他的
-
-    # 确保每个逗号后都有一个空格
+                break
     result_str = re.sub(r',(?!\s)', ', ', result_str)
-
-    # 删除连续的逗号和空格
     result_str = re.sub(r', , ', ', ', result_str)
-
-    # 用逗号和空格作为分隔符来分割字符串
     words = re.split(', ', result_str)
-
-    # 移除重复单词
-    final_words = list(dict.fromkeys(words))  # 使用字典的键来去除重复的单词
-
-    # 先将 final_words 列表连接成字符串
+    final_words = list(dict.fromkeys(words))
     result_str = ', '.join(final_words)
     tags = re.findall(r'<.*?>, ', result_str)
     result_str = re.sub(r'<.*?>, ', '', result_str)
-    result_str += ', '.join(tags)
+    result_str += ''.join(tags)
     return result_str
 
 
@@ -942,8 +942,8 @@ class Script(scripts.Script):
                         save_or = gr.Checkbox(label="8. 是否保留原图",
                                               info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
 
-                    def check_rembg(rm_bg):
-                        if rm_bg:
+                    def check_rembg(is_rm_bg):
+                        if is_rm_bg:
                             if is_installed('rembg'):
                                 return gr.update(visible=False, value='')
                             else:
