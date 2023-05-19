@@ -318,7 +318,7 @@ def mcprocess(p, scene1, is_img2img):
 
         # deal with args
         if bool(parsed_args):
-            if 'real' in parsed_args:
+            if 'real' in parsed_args or 'real-c' in parsed_args:
                 is_real = True
             if 'arp' in parsed_args:
                 add_random_prompts = True
