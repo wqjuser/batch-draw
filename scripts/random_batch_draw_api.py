@@ -335,11 +335,11 @@ def mcprocess(p, scene1, is_img2img):
                     copy_p.width = 1706
                     copy_p.height = 1280
                 if ar_value == '9:16':
-                    copy_p.width = 1152
-                    copy_p.height = 2048
+                    copy_p.width = 1080
+                    copy_p.height = 1920
                 if ar_value == '16:9':
-                    copy_p.width = 2048
-                    copy_p.height = 1152
+                    copy_p.width = 1920
+                    copy_p.height = 1080
             if 'rf' in parsed_args:
                 copy_p.restore_faces = True
             if 'sn' in parsed_args:
