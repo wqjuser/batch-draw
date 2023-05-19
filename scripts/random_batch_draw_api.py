@@ -212,6 +212,41 @@ def assign_scene(images_num, scene_num, current_num, scenes):
     return scenes[-1] if images_num > 1 else scenes[0]
 
 
+def translate_with_deepl(text):
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    data = {
+        'auth_key': '1e23ad70-40b4-7e97-4d08-2239d2e114a6:fx',
+        'text': text,
+        'target_lang': 'EN'
+    }
+    response = requests.post('https://api-free.deepl.com/v2/translate', headers=headers, data=data)
+    if response.status_code == 200:
+        result = json.loads(response.content)
+        return result['translations'][0]['text']
+    else:
+        return None
+
+
+def baidu_translate(query, from_lang, to_lang, appid, secret_key):
+    # Step1. 将请求参数中的 appid、翻译 query、随机数 salt、密钥的顺序拼接得到字符串 sign_str
+    salt = random.randint(32768, 65536)
+    sign_str = appid + query + str(salt) + secret_key
+    # Step2. 对 sign_str 进行 MD5 加密，得到 32 位小写的 sign
+    sign = hashlib.md5(sign_str.encode('utf-8')).hexdigest()
+
+    # 构造请求url
+    url = f'https://fanyi-api.baidu.com/api/trans/vip/translate?q={query}&from={from_lang}&to={to_lang}' \
+          f'&appid={appid}&salt={salt}&sign={sign}'
+
+    # 发送请求，获得翻译结果
+    resp = requests.get(url)
+    result = json.loads(resp.text)
+    translated_text = result['trans_result'][0]['dst']
+    return translated_text
+
+
 def mcprocess(p, scene1, is_img2img):
     first_processed = None
     original_images = []
@@ -366,7 +401,12 @@ def mcprocess(p, scene1, is_img2img):
                                 f"{other_prompts}"
             else:
                 copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
-        copy_p.prompt = copy_p.prompt+', <lyco:GoodHands-beta2:1>'
+        if translate_with_deepl(copy_p.prompt) is not None:
+            copy_p.prompt = translate_with_deepl(copy_p.prompt)
+        else:
+            copy_p.prompt = baidu_translate(copy_p.prompt, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
+
+        copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
         processed = process_images(copy_p)
         if first_processed is None:
             first_processed = processed
