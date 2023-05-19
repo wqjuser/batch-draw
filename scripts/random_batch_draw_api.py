@@ -264,7 +264,7 @@ def merge_processed_objects(processed_list):
 
 
 def mcprocess(p, scene1, is_img2img):
-    first_processed = None
+
     first_processed_list = []
     original_images = []
     parsed_args = {}
@@ -306,6 +306,7 @@ def mcprocess(p, scene1, is_img2img):
     state.job_count = int(image_number * p.n_iter)
 
     for num in range(image_number):
+        first_processed = None
         is_real = False
         add_random_prompts = False
 
@@ -454,7 +455,6 @@ class Script(scripts.Script):
     def run(self, p, scene1):
 
         p.do_not_save_grid = True
-        p.do_not_save_samples = False
         p.batch_size = 1
         p.n_iter = 1
         original_images, processed = mcprocess(p, scene1, self.is_img2img)
