@@ -422,7 +422,8 @@ def mcprocess(p, scene1, is_img2img):
             copy_p.prompt = translate_with_deepl(copy_p.prompt)
         else:
             copy_p.prompt = baidu_translate(copy_p.prompt, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
-
+        if copy_p.seed == -1:
+            copy_p.seed = int(random.randrange(4294967294))
         copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
         processed = process_images(copy_p)
         if first_processed is None:
@@ -450,8 +451,6 @@ class Script(scripts.Script):
         return [scene1]
 
     def run(self, p, scene1):
-        if p.seed == -1:
-            p.seed = int(random.randrange(4294967294))
 
         p.do_not_save_grid = True
 
