@@ -247,8 +247,25 @@ def baidu_translate(query, from_lang, to_lang, appid, secret_key):
     return translated_text
 
 
+def merge_processed_objects(processed_list):
+    if len(processed_list) == 0:
+        return None
+
+    merged_processed = processed_list[0]
+    for processed in processed_list[1:]:
+        merged_processed.images.extend(processed.images)
+        merged_processed.all_prompts.extend(processed.all_prompts)
+        merged_processed.all_negative_prompts.extend(processed.all_negative_prompts)
+        merged_processed.all_seeds.extend(processed.all_seeds)
+        merged_processed.all_subseeds.extend(processed.all_subseeds)
+        merged_processed.infotexts.extend(processed.infotexts)
+
+    return merged_processed
+
+
 def mcprocess(p, scene1, is_img2img):
     first_processed = None
+    first_processed_list = []
     original_images = []
     parsed_args = {}
     p.do_not_save_grid = True
@@ -410,12 +427,13 @@ def mcprocess(p, scene1, is_img2img):
         processed = process_images(copy_p)
         if first_processed is None:
             first_processed = processed
+        first_processed_list.append(first_processed)
 
         # for i, img1 in enumerate(processed.images):
         #     if i > 0:
         #         break
         #     original_images[i].append(img1)
-
+    first_processed = merge_processed_objects(first_processed_list)
     return original_images, first_processed
 
 
