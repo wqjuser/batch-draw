@@ -424,6 +424,7 @@ def mcprocess(p, scene1, is_img2img):
             copy_p.prompt = baidu_translate(copy_p.prompt, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
 
         copy_p.seed = int(random.randrange(4294967294))
+        p.seed = int(random.randrange(4294967294))
         copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
         processed = process_images(copy_p)
         if first_processed is None:
