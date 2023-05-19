@@ -454,7 +454,7 @@ class Script(scripts.Script):
     def run(self, p, scene1):
 
         p.do_not_save_grid = True
-
+        p.do_not_save_samples = False
         p.batch_size = 1
         p.n_iter = 1
         original_images, processed = mcprocess(p, scene1, self.is_img2img)
