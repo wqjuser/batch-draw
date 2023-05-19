@@ -326,20 +326,20 @@ def mcprocess(p, scene1, is_img2img):
             if 'ar' in parsed_args:
                 ar_value = parsed_args.get('ar')
                 if ar_value == '1:1':
-                    copy_p.width = 512
-                    copy_p.height = 512
+                    copy_p.width = 1024
+                    copy_p.height = 1024
                 if ar_value == '3:4':
-                    copy_p.width = 600
-                    copy_p.height = 800
+                    copy_p.width = 1280
+                    copy_p.height = 1706
                 if ar_value == '4:3':
-                    copy_p.width = 800
-                    copy_p.height = 600
+                    copy_p.width = 1706
+                    copy_p.height = 1280
                 if ar_value == '9:16':
-                    copy_p.width = 540
-                    copy_p.height = 960
+                    copy_p.width = 1152
+                    copy_p.height = 2048
                 if ar_value == '16:9':
-                    copy_p.width = 960
-                    copy_p.height = 540
+                    copy_p.width = 2048
+                    copy_p.height = 1152
             if 'rf' in parsed_args:
                 copy_p.restore_faces = True
             if 'sn' in parsed_args:
