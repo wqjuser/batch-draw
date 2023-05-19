@@ -441,25 +441,4 @@ class Script(scripts.Script):
         p.n_iter = 1
         original_images, processed = mcprocess(p, scene1, self.is_img2img)
 
-        # p.prompt_for_display = processed.prompt
-        # processed_images_flattened = []
-        #
-        # for row in original_images:
-        #     processed_images_flattened += row
-        #
-        # if len(processed_images_flattened) == 1:
-        #     processed.images = processed_images_flattened
-        # else:
-        #     processed.images = [images.image_grid(processed_images_flattened,
-        #                                           rows=p.batch_size * p.n_iter)] + processed_images_flattened
-        # or_images = []
-        #
-        # if len(processed.images) == 1:
-        #     or_images.append(processed.images[0])
-        # else:
-        #     for i, img in enumerate(processed.images):
-        #         if i == 0:
-        #             continue
-        #         or_images.append(processed.images[i])
-
         return processed
