@@ -264,13 +264,15 @@ def merge_processed_objects(processed_list):
 
 
 def mcprocess(p, scene1, is_img2img):
-
     first_processed_list = []
     original_images = []
     parsed_args = {}
     p.do_not_save_grid = True
     image_number = 1
-
+    # need to remove
+    pattern_list = ['nsfw', 'sex', 'naked', 'breast', 'sexual intercourse', 'nipple', 'pornographic', 'pussy',
+                    '性', '性交', '裸体', '胸部', '色情', '乳头', '阴部']
+    pattern = '|'.join(pattern_list)
     copy_p = copy.copy(p)
     prompts_lists = [pt.camera_perspective_prompts, pt.person_prompts, pt.career_prompts,
                      pt.facial_features_prompts, pt.light_prompts,
@@ -419,11 +421,15 @@ def mcprocess(p, scene1, is_img2img):
                                 f"{other_prompts}"
             else:
                 copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
-        if translate_with_deepl(copy_p.prompt) is not None:
-            copy_p.prompt = translate_with_deepl(copy_p.prompt)
+        translate_with_deepl_prompts = translate_with_deepl(copy_p.prompt)
+        translate_with_baidu_prompts = baidu_translate(copy_p.prompt, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
+        if translate_with_deepl_prompts is not None:
+            copy_p.prompt = translate_with_deepl_prompts
+        elif translate_with_baidu_prompts is not None:
+            copy_p.prompt = translate_with_baidu_prompts
         else:
-            copy_p.prompt = baidu_translate(copy_p.prompt, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
-
+            copy_p.prompt = copy_p.prompt
+        copy_p.prompt = re.sub(pattern, '', copy_p.prompt)
         copy_p.seed = int(random.randrange(4294967294))
         p.seed = int(random.randrange(4294967294))
         copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
@@ -453,7 +459,6 @@ class Script(scripts.Script):
         return [scene1]
 
     def run(self, p, scene1):
-
         p.do_not_save_grid = True
         p.batch_size = 1
         p.n_iter = 1
