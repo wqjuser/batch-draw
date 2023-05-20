@@ -404,6 +404,13 @@ def mcprocess(p, scene1, is_img2img):
             copy_p.negative_prompt = pt.anime_negative_prompt
 
         if scene != "":
+            translate_with_deepl_prompts = translate_with_deepl(scene)
+            translate_with_baidu_prompts = baidu_translate(scene, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
+            if translate_with_deepl_prompts is not None:
+                scene = translate_with_deepl_prompts
+            elif translate_with_baidu_prompts is not None:
+                scene = translate_with_baidu_prompts
+
             if add_random_prompts:
                 if is_real:
                     copy_p.prompt = f"{scene}, {pt.default_prompt}, mix4, {combined_lora_prompts_string}, " \
@@ -421,14 +428,6 @@ def mcprocess(p, scene1, is_img2img):
                                 f"{other_prompts}"
             else:
                 copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
-        translate_with_deepl_prompts = translate_with_deepl(copy_p.prompt)
-        translate_with_baidu_prompts = baidu_translate(copy_p.prompt, 'auto', 'en', '20230227001577503', 'o9kxQADPCdFf56FHPCIv')
-        if translate_with_deepl_prompts is not None:
-            copy_p.prompt = translate_with_deepl_prompts
-        elif translate_with_baidu_prompts is not None:
-            copy_p.prompt = translate_with_baidu_prompts
-        else:
-            copy_p.prompt = copy_p.prompt
         copy_p.prompt = re.sub(pattern, '', copy_p.prompt)
         copy_p.seed = int(random.randrange(4294967294))
         p.seed = int(random.randrange(4294967294))
