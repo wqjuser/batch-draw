@@ -91,8 +91,8 @@ anime_negative_prompt = '(simple background:1.35), lowres, long neck, out of fra
 
 default_prompt = '(8k, best quality, masterpiece:1.2), best quality, official art, highres, ' \
                  'extremely detailed CG unity 8k wallpaper, extremely detailed,incredibly absurdres' \
-                 'highly detailed, absurdres, 8k resolution,exquisite facial features, prefect face, ' \
-                 'huge filesize,ultra-detailed,shiny skin'
+                 'highly detailed, absurdres, 8k resolution,exquisite facial features, ' \
+                 'huge filesize,ultra-detailed'
 
 camera_perspective_prompts = ['Depth of field', 'Panorama', 'telephoto lens', 'macro lens', 'full body', 'medium shot',
                               'cowboy shot', 'profile picture', 'close up portrait', 'POV', 'partially underwater shot',

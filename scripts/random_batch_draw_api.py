@@ -311,7 +311,7 @@ def mcprocess(p, scene1, is_img2img):
         first_processed = None
         is_real = False
         add_random_prompts = False
-
+        fix_hands = False
         if state.interrupted:
             state.nextjob()
             break
@@ -323,6 +323,8 @@ def mcprocess(p, scene1, is_img2img):
         if bool(parsed_args):
             if 'real' in parsed_args or 'real-c' in parsed_args:
                 is_real = True
+            if 'fh' in parsed_args:
+                fix_hands = True
             if 'arp' in parsed_args:
                 add_random_prompts = True
             if 'ar' in parsed_args:
@@ -431,7 +433,9 @@ def mcprocess(p, scene1, is_img2img):
         copy_p.prompt = re.sub(pattern, '', copy_p.prompt)
         copy_p.seed = int(random.randrange(4294967294))
         p.seed = int(random.randrange(4294967294))
-        copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
+        if fix_hands:
+            copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
+        print("要处理的提示词是:", f"{copy_p.prompt}")
         processed = process_images(copy_p)
         if first_processed is None:
             first_processed = processed
