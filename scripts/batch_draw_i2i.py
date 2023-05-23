@@ -217,7 +217,7 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
             text_font_path, text_watermark, text_watermark_color, text_watermark_content, text_watermark_font,
             text_watermark_pos,
             text_watermark_size, text_watermark_target, save_or, default_prompt_type, need_default_prompt,
-            need_negative_prompt, need_combine_prompt, combine_prompt_type):
+            need_negative_prompt, need_combine_prompt, combine_prompt_type, need_mix_models, models_txt):
     # First get the number of all tasks, if there are many files, this process will be time-consuming
     is_single = True
     jumps = int(jump)
@@ -247,7 +247,7 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                                                                              width_input, jumps, default_prompt_type,
                                                                              need_default_prompt,
                                                                              need_negative_prompt, need_combine_prompt,
-                                                                             combine_prompt_type)
+                                                                             combine_prompt_type, need_mix_models, models_txt)
         frames.append(frames_num)
         filenames.append(filename)
         images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed,
@@ -293,7 +293,7 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                                                                                                  width_input, jumps,
                                                                                                  default_prompt_type, need_default_prompt,
                                                                                                  need_negative_prompt, need_combine_prompt,
-                                                                                                 combine_prompt_type)
+                                                                                                 combine_prompt_type, need_mix_models, models_txt)
                             frames.append(frames_num)
                             filenames.append(filename)
                             images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
@@ -319,7 +319,7 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                                                                                          width_input, jumps,
                                                                                          default_prompt_type, need_default_prompt,
                                                                                          need_negative_prompt, need_combine_prompt,
-                                                                                         combine_prompt_type)
+                                                                                         combine_prompt_type, need_mix_models, models_txt)
                     frames.append(frames_num)
                     filenames.append(filename)
                     images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
@@ -384,10 +384,11 @@ def get_prompts(default_prompt_dict, prompt_keys):
 def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames, p, prompt_txt, prompts_folder,
                            resize_dir, resize_input, rm_bg,
                            use_individual_prompts, width_input, jumps, default_prompt_type, need_default_prompt,
-                           need_negative_prompt, need_combine_prompt, combine_prompt_type):
+                           need_negative_prompt, need_combine_prompt, combine_prompt_type, need_mix_models, models_txt):
     inf = file_txt.replace("\\", "/")
     inf = inf.replace('"', '')
     file_name = get_file_name_without_extension(inf)
+    models = []
     try:
         if inf == "":
             raise ValueError("请输入要使用的视频或者gif图片地址")
@@ -406,6 +407,12 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
     except TypeError as e:
         print(e)
     finally:
+        # 这里是分割视频模型的
+        models_number = 1
+        if need_mix_models:
+            if models_txt != "":
+                models = models_txt.split(",")
+                models_number = len(models)
         gif = Image.open(inf)
         dura = gif.info['duration']
 
@@ -491,12 +498,25 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
         j = -1
         file_idx = 0
         frame_count = 0
-
         copy_p = copy.copy(p)
         if not need_negative_prompt:
             copy_p.negative_prompt = ps.default_negative_prompts
-
-        for img in imgs:
+        img_number = len(imgs)
+        override_settings = {}
+        for i, img in enumerate(imgs):
+            if need_mix_models:
+                for k in range(models_number):
+                    if max_frames > img_number:
+                        if i <= (img_number / models_number) * k:
+                            override_settings['sd_model_checkpoint'] = models[k]
+                            copy_p.override_settings = override_settings
+                            break
+                    else:
+                        if i <= (max_frames / models_number) * k:
+                            override_settings['sd_model_checkpoint'] = models[k]
+                            copy_p.override_settings = override_settings
+                            break
+            print("模型名称为：", f"{copy_p.override_settings}")
             if state.interrupted:
                 state.nextjob()
                 break
@@ -506,6 +526,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             j = j + 1
             if j % jumps != 0:
                 continue
+
             if frame_count >= max_frames:
                 break
             for k, v in args.items():
@@ -876,6 +897,17 @@ class Script(scripts.Script):
                     need_default_prompt.change(is_need_default_prompt, inputs=[need_default_prompt],
                                                outputs=[prompt_txt])
 
+                    need_mix_models = gr.Checkbox(label="分片使用模型(勾选后请在下方输入模型全名包括后缀,使用 ',' 分隔)",
+                                                  value=False)
+                    models_txt = gr.Textbox(label="模型集合", lines=3, max_lines=5, value="",
+                                            visible=False)
+
+                    def is_need_mix_models(is_need):
+                        return gr.update(visible=is_need)
+
+                    need_mix_models.change(is_need_mix_models, inputs=[need_mix_models],
+                                           outputs=[models_txt])
+
                 file_txt = gr.Textbox(
                     label="3. 输入gif或mp4文件或文件夹全路径(勿出现中文), 若为mp4请勾选功能5并设置帧数默认30帧每秒, 处理mp4会很耗时",
                     lines=1,
@@ -1055,14 +1087,14 @@ class Script(scripts.Script):
                 width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
                 text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
                 text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames, default_prompt_type,
-                need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type]
+                need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, need_mix_models, models_txt]
 
     def run(self, p, jump, prompt_txt, file_txt, max_frames, use_individual_prompts, prompts_folder, rm_bg, save_or,
             btn_install_rembg, resize_input, resize_dir, width_input, height_input, resize_output, resize_target,
             width_output, height_output, make_a_gif, frame_rate, reverse_gif, text_watermark, text_watermark_font,
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
             text_watermark_content, custom_font, text_font_path, add_bg, bg_path, mp4_frames, default_prompt_type,
-            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type):
+            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, need_mix_models, models_txt):
 
         if p.seed == -1:
             p.seed = int(random.randrange(4294967294))
@@ -1080,7 +1112,7 @@ class Script(scripts.Script):
             text_watermark_content,
             text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
             default_prompt_type,
-            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type)
+            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, need_mix_models, models_txt)
 
         # Need to optimize the logic, the function is not open for the time being
         # if make_a_gif:
