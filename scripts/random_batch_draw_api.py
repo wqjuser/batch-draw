@@ -202,16 +202,6 @@ def parse_args(args_str, default=None):
     return arg_dict
 
 
-def assign_scene(images_num, scene_num, current_num, scenes):
-    if images_num > 1:
-        images_per_scene = images_num // scene_num
-        scene_num = int(scene_num)
-        for i in range(scene_num):
-            if current_num < images_per_scene * (i + 1):
-                return scenes[i]
-    return scenes[-1] if images_num > 1 else scenes[0]
-
-
 def translate_with_deepl(text):
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded'

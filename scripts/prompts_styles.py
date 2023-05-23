@@ -49,9 +49,9 @@ default_prompts_colorful = default_prompts + "dazzling bursts of light, vibrant 
                                              "rich texture, intricate designs, stunning backdrop, dynamic contrast, playful composition," \
                                              " mesmerizing symmetry, harmonious interplay, bold color scheme, lively energy, captivating patterns,"
 
-default_prompts_gundam = default_prompts + "gundam\(rx78\), robot, science fiction, <lora:RX78_V1:0.8>"
+default_prompts_gundam = default_prompts + "gundam\(rx78\), robot, science fiction, <lora:RX78_V1:1>"
 
-default_prompts_gundam_clothes = default_prompts + "gundam\(rx78\), robot, science fiction, mecha armor, <lora:RX78_V1:0.8>"
+default_prompts_gundam_clothes = default_prompts + "gundam\(rx78\), robot, science fiction, mecha armor, <lora:RX78_V1:1>"
 
 default_prompts_candy = default_prompts + "braid, white background, bow, teddy bear, solo, dress, twin braids, frills, long sleeves, " \
                                           "glasses, animal ears, stuffed toy, hair bow, stuffed animal, food, earrings, red nails, jewelry, " \
