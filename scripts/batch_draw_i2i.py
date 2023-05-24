@@ -444,7 +444,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             prompt_files = sorted(
                 [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
 
-        first_processed = None
         original_images = []
         processed_images = []
         processed_images2 = []
@@ -513,6 +512,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             copy_p.negative_prompt = ps.default_negative_prompts
         img_number = len(imgs)
         override_settings = {}
+        first_processed = None
         for n, img in enumerate(imgs):
             if need_mix_models:
                 for k in range(models_number):
@@ -526,7 +526,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                             override_settings['sd_model_checkpoint'] = models[k]
                             copy_p.override_settings = override_settings
                             break
-            print("模型名称为：", f"{copy_p.override_settings}")
             if state.interrupted:
                 state.nextjob()
                 break
@@ -541,7 +540,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                 break
             for k, v in args.items():
                 setattr(copy_p, k, v)
-
             if use_individual_prompts:
                 if file_idx < len(prompt_files):
                     prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
@@ -557,13 +555,14 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                     file_idx += 1
                 else:
                     print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
-
             copy_p.init_images = [img]
             processed = process_images(copy_p)
-            if first_processed is None:
-                first_processed = processed
-            cps.append(first_processed)
-            for i, img1 in enumerate(processed.images):
+            # if first_processed is None:
+            first_processed = processed
+            cps.append(processed)
+            frame_count += 1
+        for j in range(len(cps)):
+            for i, img1 in enumerate(cps[j].images):
                 if i > 0:
                     break
                 original_images[i].append(img1)
@@ -577,8 +576,13 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                 else:
                     processed_images[i].append(img1)
                     processed_images2[i].append(img1)
-            frame_count += 1
-    return dura, first_processed, original_images, processed_images, processed_images2, frame_count, file_name, copy_p, cps, models_number
+        # 这里仅仅是为了处理显示出来的提示词和图片不一致的问题
+        copy_cp = copy.deepcopy(cps)
+        final_processed = merge_processed_objects(cps)
+        if len(cps) > 1:  # 只有一张图片的时候不做插入数据的操作
+            copy_cp.insert(0, process_images(p))  # 插入一个空白数据为了解决网页显示的第一个图片是宫格图的时候造成后面的图片信息异常的问题
+            final_processed = merge_processed_objects(copy_cp)
+    return dura, final_processed, original_images, processed_images, processed_images2, frame_count, file_name, copy_p, cps, models_number
 
 
 def resize_gif(input_path, output_path, width, height):
@@ -597,7 +601,7 @@ def resize_gif(input_path, output_path, width, height):
 
 
 # Add a user-specified background image to the image
-def add_background_image(foreground_path, background_path, p, processed, filename):
+def add_background_image(foreground_path, background_path, p, processed, filename, cp):
     images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}"
     cwd = os.getcwd()
     foreground_path = cwd + "/" + foreground_path[0]
@@ -608,8 +612,8 @@ def add_background_image(foreground_path, background_path, p, processed, filenam
     background = background.resize(foreground.size)
     combined = Image.alpha_composite(background, foreground)
     with_bg_image = images.save_image(combined, f"{images_dir}/{filename}/add_bg_images", "",
-                                      prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
-                                      save_to_dirs=False, info=processed.info)
+                                      prompt=cp.prompt, seed=cp.seed, grid=False, p=p,
+                                      save_to_dirs=False, info=cp.info)
     return with_bg_image
 
 
@@ -617,7 +621,7 @@ def add_background_image(foreground_path, background_path, p, processed, filenam
 def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images, or_images,
                   text_watermark_color, text_watermark_content, text_watermark_pos, text_watermark_target,
                   text_watermark_size, text_watermark_font, custom_font, text_font_path, p, processed, filenames,
-                  frames):
+                  frames, cps):
     text_font = 'msyh.ttc'
     if not custom_font:
         if text_watermark_font == '微软雅黑':
@@ -766,16 +770,16 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
 
 
 # Transparent background and add a specified background
-def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames):
+def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames, cps):
     new_images = []
     final_images = []
     images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}"
     if rm_bg:
         for i, filename in enumerate(filenames):
-            for img in processed_images2[i]:
+            for j, img in enumerate(processed_images2[i]):
                 new_image = images.save_image(img, f"{images_dir}/{filename}/rm_bg_images", "",
-                                              prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
-                                              save_to_dirs=False, info=processed.info)
+                                              prompt=cps[j].prompt, seed=cps[j].seed, grid=False, p=p,
+                                              save_to_dirs=False, info=cps[j].info)
                 new_images.append(new_image)
                 if add_bg:
                     if bg_path == "":
@@ -783,7 +787,7 @@ def remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames
                     else:
                         bg_path = bg_path.replace("\\", "/")
                         bg_path = bg_path.replace('"', '')
-                        img1 = add_background_image(new_image, bg_path, p, processed, filename)
+                        img1 = add_background_image(new_image, bg_path, p, processed, filename, cps[j])
                         final_images.append(img1)
 
         if not add_bg:
@@ -798,45 +802,17 @@ def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, orig
                            processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
                            text_watermark_content,
                            text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, cps, models_num):
-    p.prompt_for_display = processed.prompt
     processed_images_flattened = []
-    # print("要处理的p的个数为：", f"{len(cps)}")
-    # print("要处理的模型的个数为：", f"{models_num}")
-    image_info = None
     # here starts the custom image saving logic
     if save_or:
         for i, filename in enumerate(filenames):
             for j, img in enumerate(original_images[i]):
-                # print("图片数量是：", f"{len(original_images[i])}")
-                # if models_num > 0:
-                #     for k in range(models_num):
-                #         if j < (len(original_images[i]) / models_num) * (k + 1):
-                #             # p = cps[j]
-                #             image_info = cps[j].info
-                #             print("此时的info为：", f"{image_info}")
-                #             print("此时的cps[j]为：", f"{cps[j]}")
-                #             break
                 images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/original_images"
                 if not os.path.exists(images_dir):
                     os.makedirs(images_dir)
-                # print("这时的p为：", f"{p}")
-                # info = processing.create_infotext(
-                #     p,
-                #     p.all_prompts,
-                #     p.all_seeds,
-                #     p.all_subseeds,
-                #     {},
-                #     0,
-                #     0)
-                # png_info = {}
-                # if info is not None:
-                #     png_info['parameters'] = info
-                # print("原始的图片信息是：", p.info)
-                # print("新建的图片信息是：", info)
-                # print("修改的图片信息是：", processed.info)
                 images.save_image(img, images_dir, "",
-                                  prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
-                                  save_to_dirs=False, info=processed.info)
+                                  prompt=cps[j].prompt, seed=cps[j].seed, grid=False, p=p,
+                                  save_to_dirs=False, info=cps[j].info)
         # here is the original picture show
         for row in original_images:
             processed_images_flattened += row
@@ -864,13 +840,13 @@ def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, orig
                                                   rows=p.batch_size * p.n_iter)] + processed_images_flattened
     need_add_watermark_images = []
     need_add_watermark_images1 = []
-    new_images = remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames)
+    new_images = remove_bg(add_bg, bg_path, p, processed, processed_images2, rm_bg, filenames, cps)
     # Operation after adding a text watermark
     if text_watermark:
         watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
                                            or_images, text_watermark_color, text_watermark_content, text_watermark_pos,
                                            text_watermark_target, text_watermark_size, text_watermark_font, custom_font,
-                                           text_font_path, p, processed, filenames, frames)
+                                           text_font_path, p, processed, filenames, frames, cps)
         # After adding the watermark, only the final image will be displayed
         processed_images_flattened = []
         for row in watermarked_images:
