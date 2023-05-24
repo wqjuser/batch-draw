@@ -11,7 +11,7 @@ import traceback
 import gradio as gr
 from PIL import Image, ImageSequence, ImageDraw, ImageFont
 import modules.scripts as scripts
-from modules import images
+from modules import images, processing
 from modules.processing import process_images
 from modules.shared import state
 from datetime import datetime
@@ -240,21 +240,21 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
         frames = []
         filenames = []
         dura, first_processed, original_images, processed_images, \
-            processed_images2, frames_num, filename = deal_with_single_image(file_txt, height_input, jump, max_frames,
-                                                                             mp4_frames, p, prompt_txt,
-                                                                             prompts_folder, resize_dir, resize_input,
-                                                                             rm_bg, use_individual_prompts,
-                                                                             width_input, jumps, default_prompt_type,
-                                                                             need_default_prompt,
-                                                                             need_negative_prompt, need_combine_prompt,
-                                                                             combine_prompt_type, need_mix_models, models_txt)
+            processed_images2, frames_num, filename, cp, cps, models_num = deal_with_single_image(file_txt, height_input, jump, max_frames,
+                                                                                                  mp4_frames, p, prompt_txt,
+                                                                                                  prompts_folder, resize_dir, resize_input,
+                                                                                                  rm_bg, use_individual_prompts,
+                                                                                                  width_input, jumps, default_prompt_type,
+                                                                                                  need_default_prompt,
+                                                                                                  need_negative_prompt, need_combine_prompt,
+                                                                                                  combine_prompt_type, need_mix_models, models_txt)
         frames.append(frames_num)
         filenames.append(filename)
-        images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p, first_processed,
+        images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, cp, first_processed,
                                processed_images,
                                processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
                                text_watermark_content,
-                               text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target)
+                               text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, cps, models_num)
         return first_processed
     # If the address entered is a folder
     if os.path.isdir(file_txt):
@@ -286,23 +286,29 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                         if os.path.isdir(hints_subfolder):
                             filenames = []
                             result = dura, first_processed, original_images, processed_images, \
-                                processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump, max_frames, mp4_frames,
-                                                                                                 p, prompt_txt, hints_subfolder,
-                                                                                                 resize_dir, resize_input, rm_bg,
-                                                                                                 use_individual_prompts,
-                                                                                                 width_input, jumps,
-                                                                                                 default_prompt_type, need_default_prompt,
-                                                                                                 need_negative_prompt, need_combine_prompt,
-                                                                                                 combine_prompt_type, need_mix_models, models_txt)
+                                processed_images2, frames_num, filename, cp, cps, models_num = deal_with_single_image(abs_path, height_input, jump,
+                                                                                                                      max_frames,
+                                                                                                                      mp4_frames,
+                                                                                                                      p, prompt_txt, hints_subfolder,
+                                                                                                                      resize_dir, resize_input, rm_bg,
+                                                                                                                      use_individual_prompts,
+                                                                                                                      width_input, jumps,
+                                                                                                                      default_prompt_type,
+                                                                                                                      need_default_prompt,
+                                                                                                                      need_negative_prompt,
+                                                                                                                      need_combine_prompt,
+                                                                                                                      combine_prompt_type,
+                                                                                                                      need_mix_models,
+                                                                                                                      models_txt)
                             frames.append(frames_num)
                             filenames.append(filename)
-                            images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
+                            images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, cp,
                                                    first_processed, processed_images,
                                                    processed_images2, rm_bg, save_or, text_font_path, text_watermark,
                                                    text_watermark_color,
                                                    text_watermark_content, text_watermark_font, text_watermark_pos,
                                                    text_watermark_size,
-                                                   text_watermark_target)
+                                                   text_watermark_target, cps, models_num)
                             results.append(result)
         else:
             for file_name in os.listdir(file_txt):
@@ -311,24 +317,27 @@ def process(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folde
                     filenames = []
                     abs_path = os.path.abspath(file_path)
                     result = dura, first_processed, original_images, processed_images, \
-                        processed_images2, frames_num, filename = deal_with_single_image(abs_path, height_input, jump,
-                                                                                         max_frames, mp4_frames, p,
-                                                                                         prompt_txt, prompts_folder,
-                                                                                         resize_dir, resize_input,
-                                                                                         rm_bg, use_individual_prompts,
-                                                                                         width_input, jumps,
-                                                                                         default_prompt_type, need_default_prompt,
-                                                                                         need_negative_prompt, need_combine_prompt,
-                                                                                         combine_prompt_type, need_mix_models, models_txt)
+                        processed_images2, frames_num, filename, cp, cps, models_num = deal_with_single_image(abs_path, height_input, jump,
+                                                                                                              max_frames, mp4_frames, p,
+                                                                                                              prompt_txt, prompts_folder,
+                                                                                                              resize_dir, resize_input,
+                                                                                                              rm_bg, use_individual_prompts,
+                                                                                                              width_input, jumps,
+                                                                                                              default_prompt_type,
+                                                                                                              need_default_prompt,
+                                                                                                              need_negative_prompt,
+                                                                                                              need_combine_prompt,
+                                                                                                              combine_prompt_type, need_mix_models,
+                                                                                                              models_txt)
                     frames.append(frames_num)
                     filenames.append(filename)
-                    images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, p,
+                    images_post_processing(add_bg, bg_path, custom_font, filenames, frames, original_images, cp,
                                            first_processed, processed_images,
                                            processed_images2, rm_bg, save_or, text_font_path, text_watermark,
                                            text_watermark_color,
                                            text_watermark_content, text_watermark_font, text_watermark_pos,
                                            text_watermark_size,
-                                           text_watermark_target)
+                                           text_watermark_target, cps, models_num)
                     results.append(result)
 
         for result in results:
@@ -389,6 +398,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
     inf = inf.replace('"', '')
     file_name = get_file_name_without_extension(inf)
     models = []
+    cps = []
     try:
         if inf == "":
             raise ValueError("请输入要使用的视频或者gif图片地址")
@@ -503,16 +513,16 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             copy_p.negative_prompt = ps.default_negative_prompts
         img_number = len(imgs)
         override_settings = {}
-        for i, img in enumerate(imgs):
+        for n, img in enumerate(imgs):
             if need_mix_models:
                 for k in range(models_number):
                     if max_frames > img_number:
-                        if i <= (img_number / models_number) * k:
+                        if n < (img_number / models_number) * (k + 1):
                             override_settings['sd_model_checkpoint'] = models[k]
                             copy_p.override_settings = override_settings
                             break
                     else:
-                        if i <= (max_frames / models_number) * k:
+                        if n < (max_frames / models_number) * (k + 1):
                             override_settings['sd_model_checkpoint'] = models[k]
                             copy_p.override_settings = override_settings
                             break
@@ -531,6 +541,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                 break
             for k, v in args.items():
                 setattr(copy_p, k, v)
+
             if use_individual_prompts:
                 if file_idx < len(prompt_files):
                     prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
@@ -551,7 +562,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             processed = process_images(copy_p)
             if first_processed is None:
                 first_processed = processed
-
+            cps.append(first_processed)
             for i, img1 in enumerate(processed.images):
                 if i > 0:
                     break
@@ -567,7 +578,7 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
                     processed_images[i].append(img1)
                     processed_images2[i].append(img1)
             frame_count += 1
-    return dura, first_processed, original_images, processed_images, processed_images2, frame_count, file_name
+    return dura, first_processed, original_images, processed_images, processed_images2, frame_count, file_name, copy_p, cps, models_number
 
 
 def resize_gif(input_path, output_path, width, height):
@@ -786,16 +797,43 @@ def images_post_processing(add_bg, bg_path, custom_font, filenames, frames, orig
                            processed_images,
                            processed_images2, rm_bg, save_or, text_font_path, text_watermark, text_watermark_color,
                            text_watermark_content,
-                           text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target):
+                           text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, cps, models_num):
     p.prompt_for_display = processed.prompt
     processed_images_flattened = []
+    # print("要处理的p的个数为：", f"{len(cps)}")
+    # print("要处理的模型的个数为：", f"{models_num}")
+    image_info = None
     # here starts the custom image saving logic
     if save_or:
         for i, filename in enumerate(filenames):
-            for img in original_images[i]:
+            for j, img in enumerate(original_images[i]):
+                # print("图片数量是：", f"{len(original_images[i])}")
+                # if models_num > 0:
+                #     for k in range(models_num):
+                #         if j < (len(original_images[i]) / models_num) * (k + 1):
+                #             # p = cps[j]
+                #             image_info = cps[j].info
+                #             print("此时的info为：", f"{image_info}")
+                #             print("此时的cps[j]为：", f"{cps[j]}")
+                #             break
                 images_dir = f"{batch_draw_i2i_images_folder}/{formatted_date}/{filename}/original_images"
                 if not os.path.exists(images_dir):
                     os.makedirs(images_dir)
+                # print("这时的p为：", f"{p}")
+                # info = processing.create_infotext(
+                #     p,
+                #     p.all_prompts,
+                #     p.all_seeds,
+                #     p.all_subseeds,
+                #     {},
+                #     0,
+                #     0)
+                # png_info = {}
+                # if info is not None:
+                #     png_info['parameters'] = info
+                # print("原始的图片信息是：", p.info)
+                # print("新建的图片信息是：", info)
+                # print("修改的图片信息是：", processed.info)
                 images.save_image(img, images_dir, "",
                                   prompt=p.prompt_for_display, seed=processed.seed, grid=False, p=p,
                                   save_to_dirs=False, info=processed.info)
