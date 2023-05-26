@@ -2,7 +2,6 @@ import modules.scripts as scripts
 import gradio as gr
 import random
 import os
-
 from PIL import Image, ImageSequence, ImageDraw, ImageFont
 from modules import images
 from modules.processing import process_images
@@ -20,7 +19,7 @@ import random
 import requests
 import json
 import chardet
-
+from datetime import datetime
 
 def process_string_tag(tag):
     return tag
@@ -64,6 +63,14 @@ prompt_tags = {
     "do_not_save_samples": process_boolean_tag,
     "do_not_save_grid": process_boolean_tag
 }
+
+
+current_date = datetime.now()
+formatted_date = current_date.strftime("%Y-%m-%d")
+batch_draw_i2i_images_folder = "outputs/batch_draw_t2i/images"
+batch_draw_i2i_gifs_folder = "outputs/batch_draw_t2i/gifs"
+os.makedirs(batch_draw_i2i_images_folder, exist_ok=True)
+os.makedirs(batch_draw_i2i_gifs_folder, exist_ok=True)
 
 
 def cmdargs(line):
@@ -131,12 +138,12 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
     prompt_files = sorted(
         [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
-
     first_processed = None
     original_images = []
     processed_images = []
     processed_images2 = []
     controlling_images = []
+    processeds = []
     for i in range(p.batch_size * p.n_iter):
         original_images.append([])
         processed_images.append([])
@@ -182,6 +189,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
                 controlling_images.append(img)
     if len(controlling_images) != 0:
         for img in controlling_images:
+            first_processed = None
             if state.interrupted:
                 state.nextjob()
                 break
@@ -220,7 +228,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             processed = process_images(copy_p)
             if first_processed is None:
                 first_processed = processed
-
+            processeds.append(processed)
             for i, img1 in enumerate(processed.images):
                 if i > 0:
                     break
@@ -228,6 +236,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             frame_count += 1
     else:
         for prompt_file in prompt_files:
+            first_processed = None
             if state.interrupted:
                 state.nextjob()
                 break
@@ -265,14 +274,14 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             processed = process_images(copy_p)
             if first_processed is None:
                 first_processed = processed
-
+            processeds.append(processed)
             for i, img1 in enumerate(processed.images):
                 if i > 0:
                     break
                 original_images[i].append(img1)
             frame_count += 1
 
-    return original_images, first_processed, processed_images, processed_images2, 0
+    return original_images, first_processed, processed_images, processed_images2, 0, processeds
 
 
 # 添加文字水印
@@ -618,7 +627,7 @@ class Script(scripts.Script):
 
         p.batch_size = 1
         p.n_iter = 1
-        original_images, processed, processed_images, processed_images2, dura = mcprocess(
+        original_images, processed, processed_images, processed_images2, dura, processes = mcprocess(
             p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, int(max_frames), enable_translate,
             appid, secret_key, controlnet_images)
 
