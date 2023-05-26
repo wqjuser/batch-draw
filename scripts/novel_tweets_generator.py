@@ -173,11 +173,12 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
         for file in files:
             count += 1
 
-    state.job_count = min(int(count * p.n_iter), max_frames * prompts_folders)
     frames = []
     results = []
     processed_list = []
     if prompts_folders == 0:
+        file_count = len(os.listdir(prompts_folder))
+        state.job_count = min(int(file_count * p.n_iter), max_frames * 1)
         filenames = []
         result = dura, first_processed, original_images, processed_images, \
             processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, prompts_folder,
@@ -196,6 +197,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                                text_watermark_target, cps)
         results.append(result)
     else:
+        state.job_count = min(int(count * p.n_iter), max_frames * prompts_folders)
         for file_name in os.listdir(prompts_folder):
             folder_path = os.path.join(prompts_folder, file_name)
             if os.path.isdir(folder_path):
