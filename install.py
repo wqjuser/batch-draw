@@ -12,9 +12,10 @@ with open(req_file) as file:
                 package_name, package_version = package.split('==')
                 installed_version = pkg_resources.get_distribution(package_name).version
                 if installed_version != package_version:
-                    launch.run_pip(f"install {package}", f"sd-webui-infinite-image-browsing requirement: changing {package_name} version from {installed_version} to {package_version}")
+                    launch.run_pip(f"install {package}",
+                                   f"batch_draw requirement: changing {package_name} version from {installed_version} to {package_version}")
             elif not launch.is_installed(package):
-                launch.run_pip(f"install {package}", f"sd-webui-infinite-image-browsing requirement: {package}")
+                launch.run_pip(f"install {package}", f"batch_draw requirement: {package}")
         except Exception as e:
             print(e)
-            print(f'Warning: Failed to install {package}, some preprocessors may not work.')
+            print(f"Warning: Failed to install {package}, some functions may not work.")
