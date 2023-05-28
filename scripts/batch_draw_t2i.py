@@ -127,6 +127,22 @@ def run(command, desc=None, errdesc=None, custom_env=None):
     return result.stdout.decode(encoding="utf8", errors="ignore")
 
 
+def merge_processed_objects(processed_list):
+    if len(processed_list) == 0:
+        return None
+
+    merged_processed = processed_list[0]
+    for processed in processed_list[1:]:
+        merged_processed.images.extend(processed.images)
+        merged_processed.all_prompts.extend(processed.all_prompts)
+        merged_processed.all_negative_prompts.extend(processed.all_negative_prompts)
+        merged_processed.all_seeds.extend(processed.all_seeds)
+        merged_processed.all_subseeds.extend(processed.all_subseeds)
+        merged_processed.infotexts.extend(processed.infotexts)
+
+    return merged_processed
+
+
 def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_folder, max_frames, enable_translate,
               appid, secret_key, controlnet_images_folder):
     controlnet_images_folder = controlnet_images_folder.replace("\\", "/")
@@ -143,6 +159,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
     processed_images = []
     processed_images2 = []
     controlling_images = []
+    cps = []
     processeds = []
     for i in range(p.batch_size * p.n_iter):
         original_images.append([])
@@ -227,8 +244,6 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             copy_p.init_images = [img]
             copy_p.seed = int(random.randrange(4294967294))
             processed = process_images(copy_p)
-            if first_processed is None:
-                first_processed = processed
             processeds.append(processed)
             for i, img1 in enumerate(processed.images):
                 if i > 0:
@@ -274,8 +289,6 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
 
             copy_p.seed = int(random.randrange(4294967294))
             processed = process_images(copy_p)
-            if first_processed is None:
-                first_processed = processed
             processeds.append(processed)
             for i, img1 in enumerate(processed.images):
                 if i > 0:
@@ -283,7 +296,13 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
                 original_images[i].append(img1)
             frame_count += 1
 
-    return original_images, first_processed, processed_images, processed_images2, 0, processeds
+    # 这里仅仅是为了处理显示出来的提示词和图片不一致的问题
+    copy_cp = copy.deepcopy(cps)
+    final_processed = merge_processed_objects(cps)
+    if len(cps) > 1:  # 只有一张图片的时候不做插入数据的操作
+        copy_cp.insert(0, process_images(p))  # 插入一个空白数据为了解决网页显示的第一个图片是宫格图的时候造成后面的图片信息异常的问题
+        final_processed = merge_processed_objects(copy_cp)
+    return original_images, final_processed, processed_images, processed_images2, 0, processeds
 
 
 # 添加文字水印

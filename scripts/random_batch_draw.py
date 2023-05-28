@@ -213,10 +213,27 @@ def assign_scene(images_num, scene_num, current_num, scenes):
     return scenes[-1] if images_num > 1 else scenes[0]
 
 
+def merge_processed_objects(processed_list):
+    if len(processed_list) == 0:
+        return None
+
+    merged_processed = processed_list[0]
+    for processed in processed_list[1:]:
+        merged_processed.images.extend(processed.images)
+        merged_processed.all_prompts.extend(processed.all_prompts)
+        merged_processed.all_negative_prompts.extend(processed.all_negative_prompts)
+        merged_processed.all_seeds.extend(processed.all_seeds)
+        merged_processed.all_subseeds.extend(processed.all_subseeds)
+        merged_processed.infotexts.extend(processed.infotexts)
+
+    return merged_processed
+
+
 def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10,
               content_num, is_img2img):
     first_processed = None
     original_images = []
+    cps = []
     parsed_args = {}
     scenes = [scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10]
     for i in range(p.batch_size * p.n_iter):
@@ -380,8 +397,13 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
                 break
             original_images[i].append(img1)
         frame_count += 1
-
-    return original_images, first_processed
+    # 这里仅仅是为了处理显示出来的提示词和图片不一致的问题
+    copy_cp = copy.deepcopy(cps)
+    final_processed = merge_processed_objects(cps)
+    if len(cps) > 1:  # 只有一张图片的时候不做插入数据的操作
+        copy_cp.insert(0, process_images(p))  # 插入一个空白数据为了解决网页显示的第一个图片是宫格图的时候造成后面的图片信息异常的问题
+        final_processed = merge_processed_objects(copy_cp)
+    return original_images, final_processed
 
 
 class Script(scripts.Script):

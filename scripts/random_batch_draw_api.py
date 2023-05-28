@@ -256,6 +256,7 @@ def merge_processed_objects(processed_list):
 def mcprocess(p, scene1, is_img2img):
     first_processed_list = []
     original_images = []
+    cps = []
     parsed_args = {}
     p.do_not_save_grid = True
     image_number = 1
@@ -430,12 +431,13 @@ def mcprocess(p, scene1, is_img2img):
             first_processed = processed
         first_processed_list.append(first_processed)
 
-        # for i, img1 in enumerate(processed.images):
-        #     if i > 0:
-        #         break
-        #     original_images[i].append(img1)
-    first_processed = merge_processed_objects(first_processed_list)
-    return original_images, first_processed
+    # 这里仅仅是为了处理显示出来的提示词和图片不一致的问题
+    copy_cp = copy.deepcopy(cps)
+    final_processed = merge_processed_objects(cps)
+    if len(cps) > 1:  # 只有一张图片的时候不做插入数据的操作
+        copy_cp.insert(0, process_images(p))  # 插入一个空白数据为了解决网页显示的第一个图片是宫格图的时候造成后面的图片信息异常的问题
+        final_processed = merge_processed_objects(copy_cp)
+    return original_images, final_processed
 
 
 class Script(scripts.Script):
