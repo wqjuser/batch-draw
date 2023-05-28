@@ -389,9 +389,8 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
                 copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
         copy_p.seed = int(random.randrange(4294967294))
         processed = process_images(copy_p)
-        if first_processed is None:
-            first_processed = processed
 
+        cps.append(processed)
         for i, img1 in enumerate(processed.images):
             if i > 0:
                 break

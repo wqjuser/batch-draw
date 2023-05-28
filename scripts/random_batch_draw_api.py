@@ -427,9 +427,7 @@ def mcprocess(p, scene1, is_img2img):
             copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
         print("要处理的提示词是:", f"{copy_p.prompt}")
         processed = process_images(copy_p)
-        if first_processed is None:
-            first_processed = processed
-        first_processed_list.append(first_processed)
+        cps.append(processed)
 
     # 这里仅仅是为了处理显示出来的提示词和图片不一致的问题
     copy_cp = copy.deepcopy(cps)

@@ -395,9 +395,7 @@ def mcprocess(p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, sc
         copy_p.sampler_name = 'DPM++ SDE Karras'
         copy_p.seed = int(random.randrange(4294967294))
         processed = process_images(copy_p)
-        if first_processed is None:
-            first_processed = processed
-
+        cps.append(processed)
         for i, img1 in enumerate(processed.images):
             if i > 0:
                 break

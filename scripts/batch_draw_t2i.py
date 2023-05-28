@@ -290,6 +290,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             copy_p.seed = int(random.randrange(4294967294))
             processed = process_images(copy_p)
             processeds.append(processed)
+            cps.append(processed)
             for i, img1 in enumerate(processed.images):
                 if i > 0:
                     break

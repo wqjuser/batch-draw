@@ -558,8 +558,6 @@ def deal_with_single_image(file_txt, height_input, jump, max_frames, mp4_frames,
             copy_p.init_images = [img]
             copy_p.seed = int(random.randrange(4294967294))
             processed = process_images(copy_p)
-            # if first_processed is None:
-            first_processed = processed
             cps.append(processed)
             frame_count += 1
         for j in range(len(cps)):
