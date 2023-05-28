@@ -370,6 +370,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
             else:
                 copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
             file_idx += 1
+        copy_p.seed = int(random.randrange(4294967294))
         processed = process_images(copy_p)
         cps.append(processed)
         frame_count += 1
@@ -783,8 +784,6 @@ class Script(scripts.Script):
     def run(self, p, baidu_info, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
             text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path, default_prompt_type,
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, enable_translate, appid, secret_key):
-        if p.seed == -1:
-            p.seed = int(random.randrange(4294967294))
 
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled

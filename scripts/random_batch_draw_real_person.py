@@ -376,7 +376,7 @@ def mcprocess(p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, sc
         # copy_p.restore_faces = True
         copy_p.cfg_scale = 7
         copy_p.sampler_name = 'DPM++ SDE Karras'
-
+        copy_p.seed = int(random.randrange(4294967294))
         processed = process_images(copy_p)
         if first_processed is None:
             first_processed = processed
@@ -435,9 +435,6 @@ class Script(scripts.Script):
 
     def run(self, p, images_num, cb_h, cb_w, cb_bi, cb_uw, sd_wt, scene1, scene2, scene3, scene4, scene5, scene6,
             scene7, scene8, scene9, scene10, info):
-
-        if p.seed == -1:
-            p.seed = int(random.randrange(4294967294))
 
         p.do_not_save_grid = True
 

@@ -422,7 +422,6 @@ def mcprocess(p, scene1, is_img2img):
                 copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
         copy_p.prompt = re.sub(pattern, '', copy_p.prompt)
         copy_p.seed = int(random.randrange(4294967294))
-        p.seed = int(random.randrange(4294967294))
         if fix_hands:
             copy_p.prompt = copy_p.prompt + ', <lyco:GoodHands-beta2:1>'
         print("要处理的提示词是:", f"{copy_p.prompt}")

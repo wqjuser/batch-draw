@@ -370,7 +370,7 @@ def mcprocess(p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, sce
                                 f"{other_prompts}"
             else:
                 copy_p.prompt = f"{pt.default_prompt}, {other_prompts}"
-
+        copy_p.seed = int(random.randrange(4294967294))
         processed = process_images(copy_p)
         if first_processed is None:
             first_processed = processed
@@ -452,9 +452,6 @@ class Script(scripts.Script):
 
     def run(self, p, images_num, scene1, scene2, scene3, scene4, scene5, scene6, scene7, scene8, scene9, scene10, scene_num, btn_add, btn_rem,
             info):
-
-        if p.seed == -1:
-            p.seed = int(random.randrange(4294967294))
 
         p.do_not_save_grid = True
 

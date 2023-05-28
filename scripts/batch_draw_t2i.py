@@ -225,6 +225,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
                 print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
 
             copy_p.init_images = [img]
+            copy_p.seed = int(random.randrange(4294967294))
             processed = process_images(copy_p)
             if first_processed is None:
                 first_processed = processed
@@ -271,6 +272,7 @@ def mcprocess(p, prompt_txt, file_txt, jump, use_individual_prompts, prompts_fol
             else:
                 print(f"Warning: 输入的提示词文件数量不足,后续图片生成将只使用默认提示词.")
 
+            copy_p.seed = int(random.randrange(4294967294))
             processed = process_images(copy_p)
             if first_processed is None:
                 first_processed = processed
@@ -617,9 +619,6 @@ class Script(scripts.Script):
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size,
             text_watermark_content, custom_font, text_font_path, add_bg, bg_path, baidu_info, enable_translate, appid,
             secret_key, controlnet_images):
-
-        if p.seed == -1:
-            p.seed = int(random.randrange(4294967294))
 
         p.do_not_save_grid = True
 
