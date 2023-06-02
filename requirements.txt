@@ -1,1 +1,4 @@
 chardet
+revChatGPT
+python-dotenv
+aliyun-python-sdk-core

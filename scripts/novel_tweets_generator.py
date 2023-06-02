@@ -1,25 +1,35 @@
 import copy
+import hashlib
 import importlib.util
+import json
 import os
 import random
 import re
 import shlex
 import subprocess
 import sys
-import time
 import traceback
+from datetime import datetime
+
 import gradio as gr
-from PIL import Image, ImageSequence, ImageDraw, ImageFont
+import requests
+from PIL import Image, ImageDraw, ImageFont
+
 import modules.scripts as scripts
-from modules import images, processing
+from modules import images
 from modules.processing import process_images
 from modules.shared import state
-from datetime import datetime
-import hashlib
-import random
-import requests
-import json
 from scripts import prompts_styles as ps
+from scripts import voice_params as vop
+from revChatGPT.V1 import Chatbot as ChatbotV1
+from revChatGPT.V3 import Chatbot as ChatbotV3
+from dotenv import load_dotenv
+import uuid
+from urllib.parse import quote_plus
+from urllib.parse import urlencode
+import time
+from aliyunsdkcore.client import AcsClient
+from aliyunsdkcore.request import CommonRequest
 
 
 def process_string_tag(tag):
@@ -64,11 +74,25 @@ prompt_tags = {
     "do_not_save_samples": process_boolean_tag,
     "do_not_save_grid": process_boolean_tag
 }
-
 current_date = datetime.now()
 formatted_date = current_date.strftime("%Y-%m-%d")
 novel_tweets_generator_images_folder = "outputs/novel_tweets_generator/images"
 os.makedirs(novel_tweets_generator_images_folder, exist_ok=True)
+novel_tweets_generator_prompts_folder = "outputs/novel_tweets_generator/prompts"
+os.makedirs(novel_tweets_generator_prompts_folder, exist_ok=True)
+novel_tweets_generator_audio_folder = "outputs/novel_tweets_generator/audio"
+os.makedirs(novel_tweets_generator_audio_folder, exist_ok=True)
+current_path = os.path.abspath(__file__)
+current_dir = os.path.dirname(current_path)
+parent_dir = os.path.dirname(current_dir)
+load_dotenv(dotenv_path=f"{parent_dir}\\.env", override=True, verbose=True)
+mac = uuid.getnode()
+mac_address = ':'.join(("%012X" % mac)[i:i + 2] for i in range(0, 12, 2))
+client = AcsClient(
+   os.environ.get('ALIYUN_ACCESSKEY_ID'),
+   os.environ.get('ALIYUN_ACCESSKEY_SECRET'),
+   "cn-shanghai"
+)
 
 
 def cmdargs(line):
@@ -145,28 +169,29 @@ def count_subdirectories(path):
 
 
 def baidu_translate(query, from_lang, to_lang, appid, secret_key):
-    # Step1. 将请求参数中的 appid、翻译 query、随机数 salt、密钥的顺序拼接得到字符串 sign_str
+    translated_text = ""
     salt = random.randint(32768, 65536)
     sign_str = appid + query + str(salt) + secret_key
-    # Step2. 对 sign_str 进行 MD5 加密，得到 32 位小写的 sign
     sign = hashlib.md5(sign_str.encode('utf-8')).hexdigest()
-
-    # 构造请求url
     url = f'https://fanyi-api.baidu.com/api/trans/vip/translate?q={query}&from={from_lang}&to={to_lang}' \
           f'&appid={appid}&salt={salt}&sign={sign}'
-
-    # 发送请求，获得翻译结果
     resp = requests.get(url)
     result = json.loads(resp.text)
-    translated_text = result['trans_result'][0]['dst']
+    for i, item in enumerate(result['trans_result']):
+        translated_text += item['dst']
+        if i != len(result['trans_result']) - 1:
+            translated_text += '\n'
     return translated_text
 
 
 # All the image processing is done in this method
 def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_path, text_watermark, text_watermark_color,
             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
-            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, enable_translate, appid,
-            secret_key):
+            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h):
+    if prompts_folder == "":
+        prompts_folder = os.getcwd() + "/" + novel_tweets_generator_prompts_folder
+        prompts_folder = prompts_folder.replace("\\", "/")
+        prompts_folder = prompts_folder.replace('"', '')
     prompts_folders = count_subdirectories(prompts_folder)
     count = 0
     for root, dirs, files in os.walk(prompts_folder):
@@ -184,8 +209,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
             processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, prompts_folder,
                                                                             default_prompt_type, need_default_prompt,
                                                                             need_negative_prompt, need_combine_prompt,
-                                                                            combine_prompt_type, enable_translate, appid,
-                                                                            secret_key)
+                                                                            combine_prompt_type, cb_h)
         frames.append(frames_num)
         filenames.append(os.path.basename(prompts_folder))
         images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -206,8 +230,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                     processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, folder_path,
                                                                                     default_prompt_type, need_default_prompt,
                                                                                     need_negative_prompt, need_combine_prompt,
-                                                                                    combine_prompt_type, enable_translate, appid,
-                                                                                    secret_key)
+                                                                                    combine_prompt_type, cb_h)
                 frames.append(frames_num)
                 filenames.append(os.path.basename(folder_path))
                 images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -270,7 +293,7 @@ def get_prompts(default_prompt_dict, prompt_keys):
 
 
 def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_prompt_type, need_default_prompt, need_negative_prompt,
-                           need_combine_prompt, combine_prompt_type, enable_translate, appid, secret_key):
+                           need_combine_prompt, combine_prompt_type, cb_h):
     cps = []
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
     prompt_files = sorted(
@@ -357,7 +380,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
             setattr(copy_p, k, v)
         if file_idx < len(prompt_files):
             prompt_file = os.path.join(prompts_folder, prompt_files[file_idx])
-            # 打开文件，获取文件编码
+
             with open(prompt_file, "rb") as f:
                 if is_installed('chardet'):
                     import chardet
@@ -365,12 +388,16 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                 file_encoding = result['encoding']
             with open(prompt_file, "r", encoding=file_encoding) as f:
                 individual_prompt = f.read().strip()
-            if enable_translate:
-                copy_p.prompt = baidu_translate(f"{individual_prompt}, {copy_p.prompt}", 'zh', 'en', appid, secret_key)
-            else:
-                copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
+            copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
             file_idx += 1
         copy_p.seed = int(random.randrange(4294967294))
+        if cb_h:
+            copy_p.width = 576
+            copy_p.height = 1024
+        else:
+            copy_p.width = 1024
+            copy_p.height = 576
+
         processed = process_images(copy_p)
         cps.append(processed)
         frame_count += 1
@@ -381,11 +408,10 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
             original_images[i].append(img1)
             processed_images[i].append(img1)
             processed_images2[i].append(img1)
-    # 这里仅仅是为了处理显示出来的提示词和图片不一致的问题
     copy_cp = copy.deepcopy(cps)
     final_processed = merge_processed_objects(cps)
-    if len(cps) > 1:  # 只有一张图片的时候不做插入数据的操作
-        copy_cp.insert(0, process_images(p))  # 插入一个空白数据为了解决网页显示的第一个图片是宫格图的时候造成后面的图片信息异常的问题
+    if len(cps) > 1:
+        copy_cp.insert(0, process_images(p))
         final_processed = merge_processed_objects(copy_cp)
     return 0, final_processed, original_images, processed_images, processed_images2, frame_count, copy_p, cps
 
@@ -641,6 +667,252 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
                                                   rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
 
+def ai_process_article(original_article, scene_number, api_cb, use_proxy):
+    proxy = None
+    default_pre_prompt = """你是专业的场景转换描述专家，我给你一段文字，并指定你需要转换的场景个数，你需要把他分为不同的场景。每个场景必须要细化，必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，表情，动作等等），如果场景中出现多个人物，还必须要细化每个人物的细节。
+    你回答的场景要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个场景至少6个单词，如果场景中出现了人物,请给我添加人物数量的描述，例如 一个女孩，一个男孩，5个女孩等等。不要用一段话给我回复。请你将我给你的文字转换场景，并且按照这个格式给我：
+    1.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
+    2.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
+    3.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
+    ...
+    等等
+    你只用回复场景内容，其他的不要回复。
+    例如这一段话：在未来的世界中，地球上的资源已经枯竭，人类只能依靠太空探索来维持生存。在这个时代，有一位年轻的女子名叫艾米丽，她是一名出色的宇航员，拥有超凡的技能和无畏的勇气。她的目标是在银河系中寻找新的星球，为人类开辟新的家园。
+    将它分为三个场景，你需要这样回答我：
+    1.未来，世界末日，沙漠，无人，灰色的天空，风
+    2.星际飞船，驾驶舱，一个女孩，穿着太空服，坐着，表情平静，美丽，看着操作屏幕
+    3.太空，天空，星舰，恒星，行星，银河系
+    请你牢记这些规则，任何时候都不要忘记。
+    """
+    prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n将其转换为{int(scene_number)}个场景"
+    response = ""
+    if use_proxy:
+        proxy = os.environ.get('PROXY')
+    if api_cb:
+        try:
+            openai_key = os.environ.get('KEY')
+            chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None)
+            response = chatbot.ask(prompt=prompt)
+        except Exception as e:
+            print(f"Error: {e}")
+            response = "抱歉，发生了一些意外，请重试。"
+    else:
+        configs = {
+            "access_token": f"{os.environ.get('ACCESS_TOKEN')}",
+            "base_url": os.environ.get('CHATGPT_BASE_URL')
+        }
+        if proxy is not None and proxy != "":
+            configs['proxy'] = proxy.replace('http://', '')
+        try:
+            chatbot = ChatbotV1(config=configs)
+            for data in chatbot.ask(prompt):
+                response = data["message"]
+        except Exception as e:
+            print(f"Error: {e}")
+            response = "抱歉，发生了一些意外，请重试。"
+    return gr.update(value=response), gr.update(interactive=True)
+
+
+def save_prompts(prompts, is_translate=False):
+    if prompts != "":
+        print("开始处理并保存AI推文")
+        appid = os.environ.get('BAIDU_TRANSLATE_APPID')
+        key = os.environ.get('BAIDU_TRANSLATE_KEY')
+        if is_translate:
+            prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
+        print("AI推文是：", f"{prompts}")
+        current_folders = count_subdirectories(novel_tweets_generator_prompts_folder)
+        novel_tweets_generator_prompts_sub_folder = 'outputs/novel_tweets_generator/prompts/' + f'{current_folders + 1}'
+        os.makedirs(novel_tweets_generator_prompts_sub_folder, exist_ok=True)
+        lines = prompts.splitlines()
+        for line in lines:
+            parts = line.split()
+            content = ' '.join(parts[1:])
+            filename = novel_tweets_generator_prompts_sub_folder + "/scene" + parts[0][:-1] + '.txt'
+            with open(filename, 'w') as f:
+                f.write(content)
+        print("AI推文保存完成")
+        return gr.update(interactive=True)
+    else:
+        print("AI处理的推文为空，不做处理")
+        return gr.update(interactive=True)
+
+
+def change_state(is_checked):
+    if is_checked:
+        return gr.update(value=False)
+    else:
+        return gr.update(value=True)
+
+
+def set_un_clickable():
+    return gr.update(interactive=False)
+
+
+def tts_fun(text, spd, pit, vol, per, aue, tts_type):
+    print("语音引擎类型是:", tts_type)
+    if tts_type == "百度":
+        tts_baidu(aue, per, pit, spd, text, vol)
+    # elif tts_type == "阿里":
+
+    return gr.update(interactive=True)
+
+
+def tts_baidu(aue, per, pit, spd, text, vol):
+    file_count = 0
+    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+        file_count += len(files)
+    is_short = True
+    if len(text) > 60:
+        is_short = False
+    if is_short:
+        if aue == 'mp3-16k' or aue == 'mp3-48k':
+            aue = 'mp3'
+    else:
+        if aue == 'mp3':
+            aue = 'mp3-16k'
+    audio_format = aue
+    for i, role in enumerate(vop.baidu['voice_role']):
+        if per == role:
+            per = vop.baidu['role_number'][i]
+    for i, out_type in enumerate(vop.baidu['aue']):
+        if aue == out_type:
+            aue = vop.baidu['aue_num'][i]
+    # get access token
+    data = {
+        'grant_type': 'client_credentials',
+        'client_id': os.environ.get('BAIDU_VOICE_API_KEY'),
+        'client_secret': os.environ.get('BAIDU_VOICE_SECRET_KEY'),
+    }
+    tts_url = vop.baidu['short_voice_url'] if is_short else vop.baidu['long_voice_create_url']
+    response = requests.post(vop.baidu['get_access_token_url'], data=data)
+    if response.status_code == 200:
+
+        response_dict = json.loads(response.text)
+        access_token = response_dict['access_token']
+        text_encode = quote_plus(text.encode('utf-8'))
+        headers_short = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': '*/*'
+        }
+        headers_long = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        if is_short:
+            payload = {
+                "lan": "zh",
+                "tex": text_encode,
+                "tok": access_token,
+                "cuid": mac_address,
+                "ctp": 1,
+                "spd": spd,
+                "pit": pit,
+                "vol": vol,
+                "per": per,
+                "aue": aue
+            }
+        else:
+            payload = {
+                "lang": "zh",
+                "text": text,
+                "format": audio_format,
+                "voice": per,
+                "speed": spd,
+                "pitch": pit,
+                "volume": vol,
+            }
+        if not is_short:
+            tts_url = f"{tts_url}?access_token={access_token}"
+            data = json.dumps(payload)
+            response1 = requests.post(tts_url, headers=headers_long, data=data)
+        else:
+            data = urlencode(payload)
+            response1 = requests.post(tts_url, headers=headers_short, data=data.encode('utf-8'))
+        if not is_short:
+            if response1.status_code == 200:
+                response_dict = json.loads(response1.text)
+                if 'error_code' in response_dict:
+                    print("长文本转语音任务创建失败，错误原因：", response_dict['error_msg'])
+                elif 'error' in response_dict:
+                    print("长文本转语音任务创建失败，错误原因：", f"{response_dict['error']}---{response_dict['message']}")
+                else:
+                    task_id = response_dict['task_id']
+                    print("长文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
+                    payload = json.dumps({
+                        'task_ids': [f"{task_id}"]
+                    })
+                    while True:
+                        response2 = requests.post(f"{vop.baidu['long_voice_query_url']}?access_token={access_token}", headers=headers_long,
+                                                  data=payload)
+                        rj = response2.json()
+                        if response2.status_code == 200:
+                            if rj['tasks_info'][0]['task_status'] == 'Success':
+                                speech_url = rj['tasks_info'][0]['task_result']['speech_url']
+                                response3 = requests.get(speech_url)
+                                file_ext = audio_format
+                                if audio_format == 'pcm-8k' or audio_format == 'pcm-16k':
+                                    file_ext = 'pcm'
+                                elif audio_format == 'mp3-16k' or audio_format == 'mp3-48k':
+                                    file_ext = 'mp3'
+                                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                                with open(file_path, 'wb') as f:
+                                    f.write(response3.content)
+                                break
+                            elif rj['tasks_info'][0]['task_status'] == 'Running':
+                                time.sleep(10)
+                            elif rj['tasks_info'][0]['task_status'] == 'Failure':
+                                print("长文本合成语音失败，", f"{rj['tasks_info'][0]['task_result']['err_msg']}")
+                                break
+                        else:
+                            break
+        file_ext_dict = {
+            3: 'mp3',
+            4: 'pcm',
+            5: 'pcm',
+            6: 'wav'
+        }
+        content_type_dict = {
+            3: 'audio/mp3',
+            4: 'audio/basic;codec=pcm;rate=16000;channel=1',
+            5: 'audio/basic;codec=pcm;rate=8000;channel=1',
+            6: 'audio/wav'
+        }
+        if is_short:
+            content_type = response1.headers['Content-Type']
+            if aue in file_ext_dict and content_type == content_type_dict[aue]:
+                file_ext = file_ext_dict[aue]
+                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                with open(file_path, 'wb') as f:
+                    f.write(response1.content)
+            else:
+                print("语音合成失败，请稍后重试")
+    else:
+        print('百度语音合成请求失败，请稍后重试')
+
+
+def tts_ali():
+    token = ''
+    # 创建request，并设置参数。
+    request = CommonRequest()
+    request.set_method('POST')
+    request.set_domain('nls-meta.cn-shanghai.aliyuncs.com')
+    request.set_version('2019-02-28')
+    request.set_action_name('CreateToken')
+    try:
+        response = client.do_action_with_exception(request)
+        print(response)
+
+        jss = json.loads(response)
+        if 'Token' in jss and 'Id' in jss['Token']:
+            token = jss['Token']['Id']
+            expire_time = jss['Token']['ExpireTime']
+            print("token = " + token)
+            print("expireTime = " + str(expire_time))
+    except Exception as e:
+        print(e)
+
+
 class Script(scripts.Script):
 
     def title(self):
@@ -677,7 +949,6 @@ class Script(scripts.Script):
 
                     need_combine_prompt.change(is_show_combine, inputs=[need_combine_prompt],
                                                outputs=[combine_prompt_type])
-
                     with gr.Row():
                         need_default_prompt = gr.Checkbox(label="自行输入默认正面提示词(勾选后上面选择将失效)",
                                                           value=False)
@@ -704,16 +975,95 @@ class Script(scripts.Script):
                     need_mix_models.change(is_need_mix_models, inputs=[need_mix_models],
                                            outputs=[models_txt])
                 max_frames = gr.Number(
-                    label="2. 输入指定的 GIF 帧数 (运行到指定帧数后停止(不会大于GIF的总帧数)，用于用户测试生成图片的效果，最小1帧,测试完成后请输入一个很大的数保证能把GIF所有帧数操作完毕)",
+                    label="2. 输入指定的测试图片数量 (运行到指定数量后停止(不会大于所有文本的总数)，用于用户测试生成图片的效果，最小1帧,测试完成后请输入一个很大的数保证能把所有文本操作完毕)",
                     value=666,
                     min=1
                 )
-                prompts_folder = gr.Textbox(
-                    label="3. 输入包含提示词文本文件的文件夹路径",
+                gr.HTML("3. AI处理内容")
+                original_article = gr.Textbox(
+                    label="输入推文原文",
                     lines=1,
-                    max_lines=5,
+                    max_lines=6,
                     value=""
                 )
+                with gr.Accordion(label="3.1 AI处理原文"):
+                    scene_number = gr.Number(
+                        label="输入要生成的场景数量",
+                        value=10,
+                        min=1
+                    )
+                    with gr.Row():
+                        api_cb = gr.Checkbox(
+                            label="使用api方式处理",
+                            info="需要填写KEY",
+                            value=True
+                        )
+                        web_cb = gr.Checkbox(
+                            label="使用web方式处理",
+                            info="需要填写ACCESS_TOKEN"
+                        )
+                        cb_use_proxy = gr.Checkbox(
+                            label="使用代理",
+                            info="需要填写PROXY"
+                        )
+                        cb_trans_prompt = gr.Checkbox(
+                            label="翻译AI推文,保存推文时生效",
+                            info="需要填写百度翻译的appid和key"
+                        )
+                        api_cb.change(change_state, inputs=[api_cb], outputs=[web_cb])
+                        web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb])
+                    ai_article = gr.Textbox(
+                        label="AI处理的推文将显示在这里",
+                        lines=1,
+                        max_lines=6,
+                        value=""
+                    )
+                    with gr.Row():
+                        deal_with_ai = gr.Button(value="AI处理推文")
+                        btn_save_ai_prompts = gr.Button(value="保存AI推文")
+                    tb_save_ai_prompts_folder_path = gr.Textbox(
+                        label="请输入推文保存的路径，若为空则保存在outputs/novel_tweets_generator/prompts路径下的按序号递增的文件夹下")
+
+                    deal_with_ai.click(set_un_clickable, outputs=[deal_with_ai])
+                    deal_with_ai.click(ai_process_article, inputs=[original_article, scene_number, api_cb, cb_use_proxy],
+                                       outputs=[ai_article, deal_with_ai])
+                    btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
+                    btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_trans_prompt], outputs=[btn_save_ai_prompts])
+                with gr.Accordion(label="3.2 原文转语音"):
+                    # 其他语音合成引擎  '阿里', '华为', '微软', '谷歌' 待开发
+                    voice_radio = gr.Radio(['百度'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度',
+                                           value='百度')
+                    gr.HTML(value="3.2.2 语音引擎参数")
+                    with gr.Row():
+                        with gr.Column(scale=15):
+                            voice_role = gr.Dropdown(vop.baidu['voice_role'], label="语音角色",
+                                                     value=vop.baidu['voice_role'][0])
+                        with gr.Column(scale=1, min_width=20):
+                            audition = gr.HTML('<br><br><a href="{}"><font color=blue>试听</font></a>'.format(vop.baidu['audition_url']))
+                    with gr.Row():
+                        voice_speed = gr.Slider(0, 9, label='Speed(语速)', value=5, step=1)
+                        voice_pit = gr.Slider(0, 9, label='Pit(语调)', value=5, step=1)
+                        voice_vol = gr.Slider(0, 15, label='Vol(音量)', value=5, step=1)
+                    output_type = gr.Dropdown(vop.baidu['aue'], label="输出文件格式", value=vop.baidu['aue'][0])
+                    btn_txt_to_voice = gr.Button(value="原文转语音")
+                    btn_txt_to_voice.click(set_un_clickable, outputs=[btn_txt_to_voice])
+                    btn_txt_to_voice.click(tts_fun,
+                                           inputs=[original_article, voice_speed, voice_pit, voice_vol, voice_role, output_type, voice_radio],
+                                           outputs=[btn_txt_to_voice])
+                prompts_folder = gr.Textbox(
+                    label="4. 输入包含提示词文本文件的文件夹路径",
+                    info="默认值为空时处理outputs/novel_tweets_generator/prompts文件夹下的所有文件夹",
+                    lines=1,
+                    max_lines=2,
+                    value=""
+                )
+                gr.HTML("5. 生成图片类型")
+                with gr.Row():
+                    cb_h = gr.Checkbox(label='竖图', value=True, info="尺寸为576*1024，即9:16的比例")
+                    cb_w = gr.Checkbox(label='横图', info="尺寸为1024*576，即16:9的比例")
+                    cb_h.change(change_state, inputs=[cb_h], outputs=[cb_w])
+                    cb_w.change(change_state, inputs=[cb_w], outputs=[cb_h])
+                gr.HTML("")
 
             with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True, visible=False):
                 with gr.Column(variant='panel', visible=False):
@@ -723,24 +1073,6 @@ class Script(scripts.Script):
 
             with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
                 with gr.Column(variant='panel'):
-                    baidu_info = gr.HTML(
-                        "<br><a href=https://fanyi-api.baidu.com/doc/11><font "
-                        "color=blue>点击这里了解如何获取百度翻译的appid和key</font></a>")
-                    enable_translate = gr.Checkbox(label="4. 翻译提示词",
-                                                   info="启用百度翻译,目前仅仅设置了中文翻译为英文")
-                    with gr.Row():
-                        appid = gr.Textbox(
-                            label="百度翻译的APPID",
-                            lines=1,
-                            max_lines=2,
-                            value=""
-                        )
-                        secret_key = gr.Textbox(
-                            label="百度翻译的SECRET_KEY",
-                            lines=1,
-                            max_lines=2,
-                            value=""
-                        )
                     with gr.Column():
                         text_watermark = gr.Checkbox(label="5. 添加文字水印", info="自定义文字水印")
                         with gr.Row():
@@ -776,15 +1108,19 @@ class Script(scripts.Script):
                                 value=""
                             )
 
-        return [baidu_info, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
+        return [prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
                 text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path,
-                default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, enable_translate, appid,
-                secret_key]
+                default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
+                scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
+                tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol,
+                audition, btn_txt_to_voice, output_type]
 
-    def run(self, p, baidu_info, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
+    def run(self, p, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
             text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path, default_prompt_type,
-            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, enable_translate, appid, secret_key):
-
+            need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
+            original_article, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
+            cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition, btn_txt_to_voice,
+            output_type):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
@@ -794,6 +1130,6 @@ class Script(scripts.Script):
         processed = process(p, prompt_txt, prompts_folder, int(max_frames), custom_font, text_font_path, text_watermark, text_watermark_color,
                             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
                             default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
-                            enable_translate, appid, secret_key)
+                            cb_h)
 
         return processed
