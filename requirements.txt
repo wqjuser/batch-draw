@@ -1,4 +1,5 @@
 chardet
 revChatGPT
-python-dotenv
+natsort
 aliyun-python-sdk-core
+python-dotenv

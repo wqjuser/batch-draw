@@ -14,7 +14,7 @@ from datetime import datetime
 import gradio as gr
 import requests
 from PIL import Image, ImageDraw, ImageFont
-
+from natsort import natsorted
 import modules.scripts as scripts
 from modules import images
 from modules.processing import process_images
@@ -85,14 +85,26 @@ os.makedirs(novel_tweets_generator_audio_folder, exist_ok=True)
 current_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_path)
 parent_dir = os.path.dirname(current_dir)
-load_dotenv(dotenv_path=f"{parent_dir}\\.env", override=True, verbose=True)
+if sys.platform == 'win32':
+    print('当前系统是Windows')
+    load_dotenv(dotenv_path=f"{parent_dir}\\.env", override=True, verbose=True)
+elif sys.platform == 'linux':
+    print('当前系统是Linux')
+    load_dotenv(dotenv_path=f"{parent_dir}/.env", override=True, verbose=True)
 mac = uuid.getnode()
 mac_address = ':'.join(("%012X" % mac)[i:i + 2] for i in range(0, 12, 2))
 client = AcsClient(
-   os.environ.get('ALIYUN_ACCESSKEY_ID'),
-   os.environ.get('ALIYUN_ACCESSKEY_SECRET'),
-   "cn-shanghai"
+    os.environ.get('ALIYUN_ACCESSKEY_ID'),
+    os.environ.get('ALIYUN_ACCESSKEY_SECRET'),
+    "cn-shanghai"
 )
+role_dict = {
+    '知甜_多情感': (vop.ali['emotion_category']['zhitian_emo_zh'], vop.ali['emotion_category']['zhitian_emo_en']),
+    '知米_多情感': (vop.ali['emotion_category']['zhimi_emo_zh'], vop.ali['emotion_category']['zhimi_emo_en']),
+    '知妙_多情感': (vop.ali['emotion_category']['zhimiao_emo_zh'], vop.ali['emotion_category']['zhimiao_emo_en']),
+    '知燕_多情感': (vop.ali['emotion_category']['zhiyan_emo_zh'], vop.ali['emotion_category']['zhiyan_emo_en']),
+    '知贝_多情感': (vop.ali['emotion_category']['zhibei_emo_zh'], vop.ali['emotion_category']['zhibei_emo_en'])
+}
 
 
 def cmdargs(line):
@@ -181,6 +193,7 @@ def baidu_translate(query, from_lang, to_lang, appid, secret_key):
         translated_text += item['dst']
         if i != len(result['trans_result']) - 1:
             translated_text += '\n'
+    print("AI推文是：", f"\n{translated_text}")
     return translated_text
 
 
@@ -296,7 +309,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                            need_combine_prompt, combine_prompt_type, cb_h):
     cps = []
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
-    prompt_files = sorted(
+    prompt_files = natsorted(
         [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
 
     original_images = []
@@ -720,7 +733,6 @@ def save_prompts(prompts, is_translate=False):
         key = os.environ.get('BAIDU_TRANSLATE_KEY')
         if is_translate:
             prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
-        print("AI推文是：", f"{prompts}")
         current_folders = count_subdirectories(novel_tweets_generator_prompts_folder)
         novel_tweets_generator_prompts_sub_folder = 'outputs/novel_tweets_generator/prompts/' + f'{current_folders + 1}'
         os.makedirs(novel_tweets_generator_prompts_sub_folder, exist_ok=True)
@@ -749,12 +761,12 @@ def set_un_clickable():
     return gr.update(interactive=False)
 
 
-def tts_fun(text, spd, pit, vol, per, aue, tts_type):
+def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotion_intensity):
     print("语音引擎类型是:", tts_type)
     if tts_type == "百度":
         tts_baidu(aue, per, pit, spd, text, vol)
-    # elif tts_type == "阿里":
-
+    elif tts_type == "阿里":
+        tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity)
     return gr.update(interactive=True)
 
 
@@ -862,7 +874,7 @@ def tts_baidu(aue, per, pit, spd, text, vol):
                             elif rj['tasks_info'][0]['task_status'] == 'Running':
                                 time.sleep(10)
                             elif rj['tasks_info'][0]['task_status'] == 'Failure':
-                                print("长文本合成语音失败，", f"{rj['tasks_info'][0]['task_result']['err_msg']}")
+                                print("长文本合成语音失败，原因是----->", f"{rj['tasks_info'][0]['task_result']['err_msg']}")
                                 break
                         else:
                             break
@@ -891,9 +903,30 @@ def tts_baidu(aue, per, pit, spd, text, vol):
         print('百度语音合成请求失败，请稍后重试')
 
 
-def tts_ali():
+def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity):
+    file_count = 0
+    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+        file_count += len(files)
     token = ''
-    # 创建request，并设置参数。
+    is_short = True
+    if len(text) > 300:
+        is_short = False
+    if is_short:
+        tts_url = vop.ali['short_voice_url']
+    else:
+        tts_url = vop.ali['long_voice_url']
+    app_key = os.environ.get('ALIYUN_APPKEY')
+    for i, role in enumerate(vop.ali['voice_role']):
+        if per == role:
+            if '多情感' in role:
+                for key in role_dict:
+                    if key in role:
+                        emo_zh, emo_en = role_dict[key]
+                        for j, emo in enumerate(emo_zh):
+                            if emo == voice_emotion:
+                                emo_type = emo_en[j]
+                                text = f'<speak><emotion category="{emo_type}" intensity="{voice_emotion_intensity}">' + text + '</emotion></speak>'
+            per = vop.ali['voice_code'][i]
     request = CommonRequest()
     request.set_method('POST')
     request.set_domain('nls-meta.cn-shanghai.aliyuncs.com')
@@ -902,7 +935,6 @@ def tts_ali():
     try:
         response = client.do_action_with_exception(request)
         print(response)
-
         jss = json.loads(response)
         if 'Token' in jss and 'Id' in jss['Token']:
             token = jss['Token']['Id']
@@ -911,6 +943,129 @@ def tts_ali():
             print("expireTime = " + str(expire_time))
     except Exception as e:
         print(e)
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': '*/*'
+    }
+    short_payload = json.dumps({
+        'text': text,
+        'appkey': app_key,
+        'token': token,
+        'format': aue,
+        'voice': per,
+        'volume': vol,
+        'speech_rate': spd,
+        'pitch_rate': pit
+    })
+    if token == "":
+        print("阿里云授权失败，请稍后重试")
+    else:
+        data = short_payload.encode('utf-8')
+        print("入参是：", f"{data}")
+        response = requests.post(tts_url, headers=headers, data=data)
+        if is_short:
+            if response.status_code == 200:
+                content_type = response.headers['Content-Type']
+                if content_type == 'audio/mpeg':
+                    file_ext = aue
+                    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                    with open(file_path, 'wb') as f:
+                        f.write(response.content)
+                elif content_type == 'application/json':
+                    print("语音合成失败，错误原因是:----->", f"{response.json()['message']}")
+            else:
+                print("语音合成失败，错误原因是:----->", f"{response.json()['message']}")
+        else:
+            if response.status_code == 200:
+                print("长文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
+                task_id = response.json()['data']['task_id']
+                while True:
+                    data = json.dumps({
+                        'appkey': app_key,
+                        'token': token,
+                        'task_id': task_id
+                    })
+                    response1 = requests.post(tts_url, headers=headers, data=data)
+                    rj = response1.json()
+                    if response1.status_code == 200:
+                        if rj["data"]["audio_address"] is not None:
+                            speech_url = rj["data"]["audio_address"]
+                            response2 = requests.get(speech_url)
+                            file_ext = aue
+                            file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                            with open(file_path, 'wb') as f:
+                                f.write(response2.content)
+                            break
+                        else:
+                            time.sleep(10)
+                    else:
+                        print("长文本合成语音失败，原因是----->", f"{rj['error_message']}")
+                        break
+
+
+def tts_huawei(aue, per, pit, spd, text, vol):
+    token = ''
+    get_access_token_url = vop.huawei['get_access_token_url']
+    get_access_token_payload = json.dumps({
+        "auth": {
+            "identity": {
+                "methods": ["hw_ak_sk"],
+                "hw_ak_sk": {
+                    "access": {
+                        "key": os.environ.get('HUAWEI_AK')
+                    },
+                    "secret": {
+                        "key": os.environ.get('HUAWEI_SK')
+                    }
+                }
+            },
+            "scope": {
+                "project": {
+                    "name": "cn-north-4"
+                }
+            }
+        }
+    })
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    response = requests.request("POST", get_access_token_url, headers=headers, data=get_access_token_payload)
+    if response.status_code == 200:
+        token = response.headers["X-Subject-Token"]
+    if token != '':
+        print("华为鉴权成功")
+
+    else:
+        print("华为鉴权失败")
+
+
+def change_tts(tts_type):
+    # voice_role, audition, voice_speed, voice_pit, voice_vol, output_type, voice_emotion, voice_emotion_intensity
+    if tts_type == '百度':
+        return gr.update(choices=vop.baidu['voice_role'], value=vop.baidu['voice_role'][0]), gr.update(visible=True), \
+            gr.update(minimum=0, maximum=9, value=5, step=1), gr.update(minimum=0, maximum=9, value=5, step=1), \
+            gr.update(minimum=0, maximum=15, value=5, step=1), gr.update(choices=vop.baidu['aue'], value=vop.baidu['aue'][0]), \
+            gr.update(visible=False), gr.update(visible=False)
+    elif tts_type == '阿里':
+        return gr.update(choices=vop.ali['voice_role'], value=vop.ali['voice_role'][0]), gr.update(visible=False), \
+            gr.update(minimum=-500, maximum=500, value=0, step=100), gr.update(minimum=-500, maximum=500, value=0, step=100), \
+            gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.ali['aue'], value=vop.ali['aue'][0]), \
+            gr.update(visible=True), gr.update(visible=True)
+
+
+def change_voice_role(tts_type, role):
+    if tts_type == '阿里':
+        emo_zh = []
+        if '多情感' in role:
+            for key in role_dict:
+                if key in role:
+                    emo_zh, emo_en = role_dict[key]
+            return gr.update(choices=emo_zh, value=emo_zh[0], visible=True), gr.update(minimum=0.01, maximum=2.0, value=1, visible=True)
+        else:
+            return gr.update(visible=False), gr.update(visible=False)
+    elif tts_type == '百度':
+        return gr.update(visible=False), gr.update(visible=False)
 
 
 class Script(scripts.Script):
@@ -1031,8 +1186,7 @@ class Script(scripts.Script):
                     btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_trans_prompt], outputs=[btn_save_ai_prompts])
                 with gr.Accordion(label="3.2 原文转语音"):
                     # 其他语音合成引擎  '阿里', '华为', '微软', '谷歌' 待开发
-                    voice_radio = gr.Radio(['百度'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度',
-                                           value='百度')
+                    voice_radio = gr.Radio(['百度', '阿里'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度', value='百度')
                     gr.HTML(value="3.2.2 语音引擎参数")
                     with gr.Row():
                         with gr.Column(scale=15):
@@ -1041,14 +1195,23 @@ class Script(scripts.Script):
                         with gr.Column(scale=1, min_width=20):
                             audition = gr.HTML('<br><br><a href="{}"><font color=blue>试听</font></a>'.format(vop.baidu['audition_url']))
                     with gr.Row():
+                        voice_emotion = gr.Dropdown(vop.ali['emotion_category']['zhitian_emo_zh'], label="情感类型",
+                                                    value=vop.ali['emotion_category']['zhitian_emo_zh'][0], visible=False)
+                        voice_emotion_intensity = gr.Slider(0.01, 2.0, label='emo_ints(情感强度)', value=1, visible=False)
+                    voice_role.change(change_voice_role, inputs=[voice_radio, voice_role], outputs=[voice_emotion, voice_emotion_intensity])
+                    with gr.Row():
                         voice_speed = gr.Slider(0, 9, label='Speed(语速)', value=5, step=1)
                         voice_pit = gr.Slider(0, 9, label='Pit(语调)', value=5, step=1)
                         voice_vol = gr.Slider(0, 15, label='Vol(音量)', value=5, step=1)
                     output_type = gr.Dropdown(vop.baidu['aue'], label="输出文件格式", value=vop.baidu['aue'][0])
+                    voice_radio.change(change_tts, inputs=[voice_radio],
+                                       outputs=[voice_role, audition, voice_speed, voice_pit, voice_vol, output_type, voice_emotion,
+                                                voice_emotion_intensity])
                     btn_txt_to_voice = gr.Button(value="原文转语音")
                     btn_txt_to_voice.click(set_un_clickable, outputs=[btn_txt_to_voice])
                     btn_txt_to_voice.click(tts_fun,
-                                           inputs=[original_article, voice_speed, voice_pit, voice_vol, voice_role, output_type, voice_radio],
+                                           inputs=[original_article, voice_speed, voice_pit, voice_vol, voice_role, output_type, voice_radio,
+                                                   voice_emotion, voice_emotion_intensity],
                                            outputs=[btn_txt_to_voice])
                 prompts_folder = gr.Textbox(
                     label="4. 输入包含提示词文本文件的文件夹路径",
@@ -1113,14 +1276,14 @@ class Script(scripts.Script):
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
                 scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol,
-                audition, btn_txt_to_voice, output_type]
+                audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity]
 
     def run(self, p, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
             text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path, default_prompt_type,
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
             original_article, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition, btn_txt_to_voice,
-            output_type):
+            output_type, voice_emotion, voice_emotion_intensity):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
