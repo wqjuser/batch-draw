@@ -403,7 +403,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                 file_encoding = result['encoding']
             with open(prompt_file, "r", encoding=file_encoding) as f:
                 individual_prompt = f.read().strip()
-            copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
+            copy_p.prompt = f"({individual_prompt.replace('.', ' ')}:1.5), {copy_p.prompt}"
             file_idx += 1
         copy_p.seed = int(random.randrange(4294967294))
         if cb_h:
@@ -412,7 +412,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
         else:
             copy_p.width = 1024
             copy_p.height = 576
-
+        copy_p.sampler_name = 'DPM++ SDE Karras'
         processed = process_images(copy_p)
         cps.append(processed)
         frame_count += 1
@@ -684,7 +684,7 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
 
 def ai_process_article(original_article, scene_number, api_cb, use_proxy):
     proxy = None
-    default_pre_prompt = """你是专业的场景转换描述专家，我给你一段文字，并指定你需要转换的场景个数，你需要把他分为不同的场景。每个场景必须要细化，必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，表情，动作等等），如果场景中出现多个人物，还必须要细化每个人物的细节。
+    default_pre_prompt = """你是专业的场景转换描述专家，我给你一段文字，并指定你需要转换的场景个数，你需要把他分为不同的场景。每个场景必须要细化，必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个场景中出现的人物是同一个，请统一这个任务的衣服，发色等细节。如果场景中出现多个人物，还必须要细化每个人物的细节。
     你回答的场景要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个场景至少6个单词，如果场景中出现了人物,请给我添加人物数量的描述，例如 一个女孩，一个男孩，5个女孩等等。不要用一段话给我回复。请你将我给你的文字转换场景，并且按照这个格式给我：
     1.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
     2.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
@@ -699,7 +699,7 @@ def ai_process_article(original_article, scene_number, api_cb, use_proxy):
     3.太空，天空，星舰，恒星，行星，银河系
     请你牢记这些规则，任何时候都不要忘记。
     """
-    prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n将其转换为{int(scene_number)}个场景"
+    prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
@@ -849,12 +849,12 @@ def tts_baidu(aue, per, pit, spd, text, vol):
             if response1.status_code == 200:
                 response_dict = json.loads(response1.text)
                 if 'error_code' in response_dict:
-                    print("长文本转语音任务创建失败，错误原因：", response_dict['error_msg'])
+                    print("百度长文本转语音任务创建失败，错误原因：", response_dict['error_msg'])
                 elif 'error' in response_dict:
-                    print("长文本转语音任务创建失败，错误原因：", f"{response_dict['error']}---{response_dict['message']}")
+                    print("百度长文本转语音任务创建失败，错误原因：", f"{response_dict['error']}---{response_dict['message']}")
                 else:
                     task_id = response_dict['task_id']
-                    print("长文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
+                    print("百度长文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
                     payload = json.dumps({
                         'task_ids': [f"{task_id}"]
                     })
@@ -874,11 +874,15 @@ def tts_baidu(aue, per, pit, spd, text, vol):
                                 file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
                                 with open(file_path, 'wb') as f:
                                     f.write(response3.content)
+                                if sys.platform == 'win32':
+                                    print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                                else:
+                                    print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
                                 break
                             elif rj['tasks_info'][0]['task_status'] == 'Running':
                                 time.sleep(10)
                             elif rj['tasks_info'][0]['task_status'] == 'Failure':
-                                print("长文本合成语音失败，原因是----->", f"{rj['tasks_info'][0]['task_result']['err_msg']}")
+                                print("百度长文本合成语音失败，原因是----->", f"{rj['tasks_info'][0]['task_result']['err_msg']}")
                                 break
                         else:
                             break
@@ -902,7 +906,7 @@ def tts_baidu(aue, per, pit, spd, text, vol):
                 with open(file_path, 'wb') as f:
                     f.write(response1.content)
             else:
-                print("语音合成失败，请稍后重试")
+                print("百度短文本语音合成失败，请稍后重试")
     else:
         print('百度语音合成请求失败，请稍后重试')
 
@@ -913,7 +917,7 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
         file_count += len(files)
     token = ''
     is_short = True
-    if len(text) > 300:
+    if len(text) > 100:
         is_short = False
     if is_short:
         tts_url = vop.ali['short_voice_url']
@@ -938,13 +942,9 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
     request.set_action_name('CreateToken')
     try:
         response = client.do_action_with_exception(request)
-        print(response)
         jss = json.loads(response)
         if 'Token' in jss and 'Id' in jss['Token']:
             token = jss['Token']['Id']
-            expire_time = jss['Token']['ExpireTime']
-            print("token = " + token)
-            print("expireTime = " + str(expire_time))
     except Exception as e:
         print(e)
 
@@ -962,13 +962,35 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
         'speech_rate': spd,
         'pitch_rate': pit
     })
+    long_payload = json.dumps({
+        "payload": {
+            "tts_request": {
+                "voice": per,
+                "sample_rate": 16000,
+                "format": aue,
+                "text": text,
+                "enable_subtitle": False,
+                'volume': vol,
+                'speech_rate': spd,
+                'pitch_rate': pit
+            },
+            "enable_notify": False
+        },
+        "context": {
+            "device_id": mac_address
+        },
+        "header": {
+            "appkey": app_key,
+            "token": token
+        }
+    })
     if token == "":
         print("阿里云授权失败，请稍后重试")
     else:
-        data = short_payload.encode('utf-8')
-        print("入参是：", f"{data}")
+        data = short_payload.encode('utf-8') if is_short else long_payload.encode('utf-8')
         response = requests.post(tts_url, headers=headers, data=data)
         if is_short:
+            print("阿里短文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
             if response.status_code == 200:
                 content_type = response.headers['Content-Type']
                 if content_type == 'audio/mpeg':
@@ -976,21 +998,25 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
                     file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
                     with open(file_path, 'wb') as f:
                         f.write(response.content)
+                    if sys.platform == 'win32':
+                        print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                    else:
+                        print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
                 elif content_type == 'application/json':
                     print("语音合成失败，错误原因是:----->", f"{response.json()['message']}")
             else:
                 print("语音合成失败，错误原因是:----->", f"{response.json()['message']}")
         else:
             if response.status_code == 200:
-                print("长文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
+                print("阿里长文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
                 task_id = response.json()['data']['task_id']
                 while True:
-                    data = json.dumps({
+                    data = {
                         'appkey': app_key,
                         'token': token,
                         'task_id': task_id
-                    })
-                    response1 = requests.post(tts_url, headers=headers, data=data)
+                    }
+                    response1 = requests.get(tts_url, headers=headers, params=data)
                     rj = response1.json()
                     if response1.status_code == 200:
                         if rj["data"]["audio_address"] is not None:
@@ -1000,88 +1026,101 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
                             file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
                             with open(file_path, 'wb') as f:
                                 f.write(response2.content)
+                            if sys.platform == 'win32':
+                                print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                            else:
+                                print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
                             break
                         else:
                             time.sleep(10)
                     else:
-                        print("长文本合成语音失败，原因是----->", f"{rj['error_message']}")
+                        print("阿里长文本合成语音失败，原因是----->", f"{rj['error_message']}")
                         break
+            else:
+                print("阿里长文本转语音任务创建失败，原因是:----->", f"{response.json()['message']}")
 
 
 def tts_huawei(aue, per, pit, spd, text, vol):
-    file_count = 0
-    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
-        file_count += len(files)
-    token = ''
-    get_access_token_url = vop.huawei['get_access_token_url']
-    tts_url = vop.huawei['tts_url']
-    get_access_token_payload = json.dumps({
-        "auth": {
-            "identity": {
-                "methods": ["hw_ak_sk"],
-                "hw_ak_sk": {
-                    "access": {
-                        "key": os.environ.get('HUAWEI_AK')
-                    },
-                    "secret": {
-                        "key": os.environ.get('HUAWEI_SK')
+    if len(text) > 100:
+        print("文本过长")
+    else:
+        file_count = 0
+        for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+            file_count += len(files)
+        token = ''
+        get_access_token_url = vop.huawei['get_access_token_url']
+        tts_url = vop.huawei['tts_url']
+        get_access_token_payload = json.dumps({
+            "auth": {
+                "identity": {
+                    "methods": ["hw_ak_sk"],
+                    "hw_ak_sk": {
+                        "access": {
+                            "key": os.environ.get('HUAWEI_AK')
+                        },
+                        "secret": {
+                            "key": os.environ.get('HUAWEI_SK')
+                        }
+                    }
+                },
+                "scope": {
+                    "project": {
+                        "name": "cn-east-3"
                     }
                 }
-            },
-            "scope": {
-                "project": {
-                    "name": "cn-east-3"
-                }
             }
-        }
-    })
-    token_headers = {
-        'Content-Type': 'application/json'
-    }
-    for i, role in enumerate(vop.huawei['voice_role']):
-        if per == role:
-            per = vop.huawei['voice_code'][i]
-    response = requests.request("POST", get_access_token_url, headers=token_headers, data=get_access_token_payload)
-    token = response.headers["X-Subject-Token"]
-    if token != '':
-        print("华为鉴权成功")
-        tts_headers = {
-            'X-Auth-Token': f"{token}",
+        })
+        token_headers = {
             'Content-Type': 'application/json'
         }
-        tts_payload = {
-            'text': text,
-            'config': {
-                'audio_format': aue,
-                'sample_rate': '16000',
-                'property': per,
-                'speed': spd,
-                'pitch': pit,
-                'volume': vol
+        for i, role in enumerate(vop.huawei['voice_role']):
+            if per == role:
+                per = vop.huawei['voice_code'][i]
+        response = requests.request("POST", get_access_token_url, headers=token_headers, data=get_access_token_payload)
+        token = response.headers["X-Subject-Token"]
+        if token != '':
+            print("华为鉴权成功")
+            tts_headers = {
+                'X-Auth-Token': f"{token}",
+                'Content-Type': 'application/json'
             }
-        }
-        response_tts = requests.post(tts_url, headers=tts_headers, data=json.dumps(tts_payload))
-        rj = response_tts.json()
-        if response_tts.status_code == 200:
-            print("华为语音合成完成")
-            data = rj['result']['data']
-            audio_data = base64.b64decode(data)
-            file_ext = aue
-            file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
-            if file_ext == 'mp3':
-                with open(file_path, 'wb') as f:
-                    f.write(audio_data)
+            tts_payload = {
+                'text': text,
+                'config': {
+                    'audio_format': aue,
+                    'sample_rate': '16000',
+                    'property': per,
+                    'speed': spd,
+                    'pitch': pit,
+                    'volume': vol
+                }
+            }
+            response_tts = requests.post(tts_url, headers=tts_headers, data=json.dumps(tts_payload))
+            rj = response_tts.json()
+            if response_tts.status_code == 200:
+                print("华为语音合成完成")
+                data = rj['result']['data']
+                audio_data = base64.b64decode(data)
+                file_ext = aue
+                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                if file_ext == 'mp3':
+                    with open(file_path, 'wb') as f:
+                        f.write(audio_data)
+                else:
+                    with wave.open(file_path, 'wb') as f:
+                        f.setnchannels(1)
+                        f.setsampwidth(2)
+                        f.setframerate(16000)
+                        f.writeframes(audio_data)
+                if sys.platform == 'win32':
+                    print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                else:
+                    print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
             else:
-                with wave.open(file_path, 'wb') as f:
-                    f.setnchannels(1)
-                    f.setsampwidth(2)
-                    f.setframerate(16000)
-                    f.writeframes(audio_data)
+                print("错误返回值是:", f"{response_tts.json()}")
+                print("华为语音合成失败，原因是----->", rj['error_msg'])
         else:
-            print("错误返回值是:", f"{response_tts.json()}")
-            print("华为语音合成失败，原因是----->", rj['error_msg'])
-    else:
-        print("华为鉴权失败,请重试")
+            print("华为鉴权失败,请重试")
 
 
 def change_tts(tts_type):

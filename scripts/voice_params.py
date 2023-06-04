@@ -14,8 +14,8 @@ baidu = {
 }
 ali = {
     'voice_role': [
-        '知甜_多情感(多种情感女声-通用场景)', '知米_多情感(多种情感女声-通用场景)', '知燕_多情感(多种情感女声-通用场景)',
-        '知妙_多情感(多种情感女声-中英场景)', '知贝_多情感(多种情感童声-通用场景)', '若兮(温柔女声-通用场景)', '思琪(温柔女声-通用场景)',
+        '知妙_多情感(多种情感女声-中英场景)', '知甜_多情感(多种情感女声-通用场景)', '知米_多情感(多种情感女声-通用场景)',
+        '知燕_多情感(多种情感女声-通用场景)', '知贝_多情感(多种情感童声-通用场景)', '若兮(温柔女声-通用场景)', '思琪(温柔女声-通用场景)',
         '艾琪(温柔女声-通用场景)', '小云(标准女声-通用场景)', '思佳(标准女声-通用场景)', '艾佳(标准女声-通用场景)', '柜姐(亲切女声-通用场景)',
         '宁儿(标准女声-通用场景)', '瑞琳(标准女声-通用场景)', '思诚(标准男声-通用场景)', '小刚(标准男声-通用场景)',
         'Stella(知性女声-通用场景)', 'Stanley(沉稳男声-通用场景)', 'Kenny(沉稳男声-通用场景)', 'Rosa(自然女声-通用场景)',
@@ -37,7 +37,7 @@ ali = {
         'Farah(马来语女声-纯马来语场景)', 'Indah(印尼语女声-纯印尼语场景)', 'camila(西班牙语女声-西班牙语场景)', 'perla(意大利语女声-意大利语场景)'
     ],
     'voice_code': [
-        'zhitian_emo', 'zhimi_emo', 'zhiyan_emo', 'zhimiao_emo', 'zhibei_emo', 'ruoxi', 'siqi', 'aiqi', 'xiaoyun', 'sijia', 'aijia', 'guijie',
+        'zhimiao_emo', 'zhitian_emo', 'zhimi_emo', 'zhiyan_emo', 'zhibei_emo', 'ruoxi', 'siqi', 'aiqi', 'xiaoyun', 'sijia', 'aijia', 'guijie',
         'ninger', 'ruilin', 'sicheng', 'xiaogang', 'stella', 'stanley', 'kenny', 'rosa', 'aicheng', 'aida', 'zhiyuan', 'zhigui', 'zhiya', 'zhiyue',
         'zhishuo', 'zhida', 'zhisha', 'siyue', 'aiya', 'aixia', 'aimei', 'aiyu', 'aiyue', 'aijing', 'xiaomei', 'aishuo', 'aina', 'yina', 'sijing',
         'sitong', 'jielidou', 'xiaobei', 'aitong', 'aiwei', 'aibao', 'harry', 'ava', 'abby', 'andy', 'eric', 'emily', 'luna', 'luca', 'wendy',
@@ -63,7 +63,7 @@ ali = {
     },
     'aue': ['mp3', 'pcm', 'wav'],
     'short_voice_url': 'https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/tts',
-    'long_voice_url': 'https://nls-gateway.cn-shanghai.aliyuncs.com/rest/v1/tts/async',
+    'long_voice_url': 'https://nls-gateway.cn-shanghai.aliyuncs.com/rest/v1/tts/async'
 }
 huawei = {
     'voice_role': [
