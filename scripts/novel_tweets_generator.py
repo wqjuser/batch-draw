@@ -30,6 +30,8 @@ from urllib.parse import urlencode
 import time
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.request import CommonRequest
+import base64
+import wave
 
 
 def process_string_tag(tag):
@@ -767,6 +769,8 @@ def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotio
         tts_baidu(aue, per, pit, spd, text, vol)
     elif tts_type == "阿里":
         tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity)
+    elif tts_type == "华为":
+        tts_huawei(aue, per, pit, spd, text, vol)
     return gr.update(interactive=True)
 
 
@@ -1005,8 +1009,12 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
 
 
 def tts_huawei(aue, per, pit, spd, text, vol):
+    file_count = 0
+    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+        file_count += len(files)
     token = ''
     get_access_token_url = vop.huawei['get_access_token_url']
+    tts_url = vop.huawei['tts_url']
     get_access_token_payload = json.dumps({
         "auth": {
             "identity": {
@@ -1022,22 +1030,58 @@ def tts_huawei(aue, per, pit, spd, text, vol):
             },
             "scope": {
                 "project": {
-                    "name": "cn-north-4"
+                    "name": "cn-east-3"
                 }
             }
         }
     })
-    headers = {
+    token_headers = {
         'Content-Type': 'application/json'
     }
-    response = requests.request("POST", get_access_token_url, headers=headers, data=get_access_token_payload)
-    if response.status_code == 200:
-        token = response.headers["X-Subject-Token"]
+    for i, role in enumerate(vop.huawei['voice_role']):
+        if per == role:
+            per = vop.huawei['voice_code'][i]
+    response = requests.request("POST", get_access_token_url, headers=token_headers, data=get_access_token_payload)
+    token = response.headers["X-Subject-Token"]
     if token != '':
         print("华为鉴权成功")
-
+        tts_headers = {
+            'X-Auth-Token': f"{token}",
+            'Content-Type': 'application/json'
+        }
+        tts_payload = {
+            'text': text,
+            'config': {
+                'audio_format': aue,
+                'sample_rate': '16000',
+                'property': per,
+                'speed': spd,
+                'pitch': pit,
+                'volume': vol
+            }
+        }
+        response_tts = requests.post(tts_url, headers=tts_headers, data=json.dumps(tts_payload))
+        rj = response_tts.json()
+        if response_tts.status_code == 200:
+            print("华为语音合成完成")
+            data = rj['result']['data']
+            audio_data = base64.b64decode(data)
+            file_ext = aue
+            file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+            if file_ext == 'mp3':
+                with open(file_path, 'wb') as f:
+                    f.write(audio_data)
+            else:
+                with wave.open(file_path, 'wb') as f:
+                    f.setnchannels(1)
+                    f.setsampwidth(2)
+                    f.setframerate(16000)
+                    f.writeframes(audio_data)
+        else:
+            print("错误返回值是:", f"{response_tts.json()}")
+            print("华为语音合成失败，原因是----->", rj['error_msg'])
     else:
-        print("华为鉴权失败")
+        print("华为鉴权失败,请重试")
 
 
 def change_tts(tts_type):
@@ -1052,6 +1096,11 @@ def change_tts(tts_type):
             gr.update(minimum=-500, maximum=500, value=0, step=100), gr.update(minimum=-500, maximum=500, value=0, step=100), \
             gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.ali['aue'], value=vop.ali['aue'][0]), \
             gr.update(visible=True), gr.update(visible=True)
+    elif tts_type == '华为':
+        return gr.update(choices=vop.huawei['voice_role'], value=vop.huawei['voice_role'][0]), gr.update(visible=True), \
+            gr.update(minimum=-500, maximum=500, value=0, step=100), gr.update(minimum=-500, maximum=500, value=0, step=100), \
+            gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.huawei['aue'], value=vop.huawei['aue'][0]), \
+            gr.update(visible=False), gr.update(visible=False)
 
 
 def change_voice_role(tts_type, role):
@@ -1065,6 +1114,8 @@ def change_voice_role(tts_type, role):
         else:
             return gr.update(visible=False), gr.update(visible=False)
     elif tts_type == '百度':
+        return gr.update(visible=False), gr.update(visible=False)
+    elif tts_type == '华为':
         return gr.update(visible=False), gr.update(visible=False)
 
 
@@ -1185,8 +1236,8 @@ class Script(scripts.Script):
                     btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
                     btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_trans_prompt], outputs=[btn_save_ai_prompts])
                 with gr.Accordion(label="3.2 原文转语音"):
-                    # 其他语音合成引擎  '阿里', '华为', '微软', '谷歌' 待开发
-                    voice_radio = gr.Radio(['百度', '阿里'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度', value='百度')
+                    # 其他语音合成引擎 '华为', '微软', '谷歌' 待开发
+                    voice_radio = gr.Radio(['百度', '阿里', '华为'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度', value='百度')
                     gr.HTML(value="3.2.2 语音引擎参数")
                     with gr.Row():
                         with gr.Column(scale=15):

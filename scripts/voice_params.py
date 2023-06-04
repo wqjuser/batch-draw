@@ -66,8 +66,28 @@ ali = {
     'long_voice_url': 'https://nls-gateway.cn-shanghai.aliyuncs.com/rest/v1/tts/async',
 }
 huawei = {
-    'short_voice_url': 'https://sis-ext.cn-east-3.myhuaweicloud.com/v1/528c3886649b45ebb28463ce1b9fdb6b/tts',
-    'get_access_token_url': 'https://iam.cn-north-4.myhuaweicloud.com/v3/auth/tokens'
+    'voice_role': [
+        '小琪(普通-标准女声)', '小雯(普通-柔美女声)', '小宇(普通-标准男声)', '小夏(普通-热情女声)', '小燕(普通-温柔女声)', '小倩(普通-成熟女声)',
+        '小王(普通-童声)', '小呆(普通-呆萌童声)', '小婧(普通-俏皮女声)', '小宋(普通-激昂男声)', 'cameal(普通-英文女声)', '华小夏(精品-热情女声)',
+        '华小唯(精品-嗲柔女声)', '华小颜(精品-严厉女声)', '华晓阳(精品-朝气男声)', '华晓刚(精品-利落男声)', '华小雯(精品-柔美女声)',
+        '华小美(精品-温柔女声)', '华小飞(精品-朝气男声)', '华小璐(精品-知性女声)', '华小靓(精品-嘹亮女声)', '华晓东(精品-成熟男声)',
+        '华小蕊(精品-知性女声)', '华小萱(精品-台湾女声)', '华小闽(精品-闽南女声)', '华小舒(精品-舒缓女声)', '华女侠(精品-武侠女生)',
+        '华晓悬(精品-悬疑男声)', '华小龙(精品-朝气男声)', '华小汝(精品-柔美女声)', '华小涵(精品-知性女声)', '华小宁(精品-沉稳男声)',
+        '华小珍(精品-温柔女声)', 'alvin(精品-成熟英文男声)', 'amy(精品-成熟英文女声)'
+    ],
+    'voice_code': [
+        'chinese_xiaoqi_common', 'chinese_xiaowen_common', 'chinese_xiaoyu_common', 'chinese_xiaoxia_common', 'chinese_xiaoyan_common',
+        'chinese_xiaoqian_common', 'chinese_xiaowang_common', 'chinese_xiaodai_common', 'chinese_xiaojing_common', 'chinese_xiaosong_common',
+        'english_cameal_common', 'chinese_huaxiaoxia_common', 'chinese_huaxiaowei_common', 'chinese_huaxiaoyan_common', 'chinese_huaxiaoyang_common',
+        'chinese_huaxiaogang_common', 'chinese_huaxiaowen_common', 'chinese_huaxiaomei_common', 'chinese_huaxiaofei_common',
+        'chinese_huaxiaolu_common', 'chinese_huaxiaoliang_common', 'chinese_huaxiaodong_common', 'chinese_huaxiaorui_common',
+        'chinese_huaxiaoxuan_common', 'chinese_huaxiaomin_common', 'chinese_huaxiaoshu_common', 'chinese_huanvxia_literature',
+        'chinese_huaxiaoxuan_literature', 'chinese_huaxiaolong_common', 'chinese_huaxiaoru_common', 'chinese_huaxiaohan_common',
+        'chinese_huaxiaoning_common', 'chinese_huaxiaozhen_common', 'english_alvin_common', 'english_amy_common'
+    ],
+    'aue': ['mp3', 'pcm', 'wav'],
+    'tts_url': 'https://sis-ext.cn-east-3.myhuaweicloud.com/v1/528c3886649b45ebb28463ce1b9fdb6b/tts',
+    'get_access_token_url': 'https://iam.cn-east-3.myhuaweicloud.com/v3/auth/tokens'
 }
 azure = {
 
