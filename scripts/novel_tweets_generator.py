@@ -32,6 +32,7 @@ from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.request import CommonRequest
 import base64
 import wave
+import azure.cognitiveservices.speech as speechsdk
 
 
 def process_string_tag(tag):
@@ -100,6 +101,98 @@ client = AcsClient(
     os.environ.get('ALIYUN_ACCESSKEY_SECRET'),
     "cn-shanghai"
 )
+
+
+def get_and_deal_azure_speech_list():
+    global vop
+    old_azure_content = f'{vop.azure}'
+    try:
+        voice_number = vop.azure['voice_number']
+    except KeyError:
+        voice_number = 0
+    appid = os.environ.get('BAIDU_TRANSLATE_APPID')
+    key = os.environ.get('BAIDU_TRANSLATE_KEY')
+    chinese_speech_list = []
+    headers = {
+        'Ocp-Apim-Subscription-Key': os.environ.get('AZURE_SPEECH_KEY')
+    }
+    azure_speech_list_response = requests.get(vop.azure['speech_list_url'], headers=headers)
+    if azure_speech_list_response.status_code == 200:
+
+        print("获取微软语音列表成功")
+        speech_list = azure_speech_list_response.json()
+        for i, speech in enumerate(speech_list):
+            if 'Chinese' in speech['LocaleName']:
+                chinese_speech_list.append(speech)
+        print("微软中文语音数量是:----->", f"{len(chinese_speech_list)}")
+        if voice_number == len(chinese_speech_list):
+            print('微软语音配置未改变，无需写入')
+        else:
+            vop.azure['emotion_category'] = {}
+            vop.azure['voice_number'] = len(chinese_speech_list)
+            vop.azure['voice_role'] = []
+            vop.azure['voice_code'] = []
+            print("微软语音配置写入中，请稍后...")
+            for speech in chinese_speech_list:
+                if 'StyleList' in speech or 'RolePlayList' in speech:
+                    styles_en = []
+                    styles_zh = []
+                    roles_en = []
+                    roles_zh = []
+                    if 'StyleList' in speech:
+                        styles_en = speech['StyleList']
+                        styles_zh = translate(speech['StyleList'], appid, key)
+                    if 'RolePlayList' in speech:
+                        roles_en = speech['RolePlayList']
+                        roles_zh = translate(speech['RolePlayList'], appid, key)
+                    name = speech['DisplayName']
+                    if name not in vop.azure['emotion_category']:
+                        if len(styles_en) > 0 and len(roles_en) == 0:
+                            vop.azure['emotion_category'][name] = {
+                                'styles_en': styles_en,
+                                'styles_zh': styles_zh
+                            }
+                        if len(styles_en) == 0 and len(roles_en) > 0:
+                            vop.azure['emotion_category'][name] = {
+                                'roles_en': roles_en,
+                                'roles_zh': roles_zh
+                            }
+                        if len(styles_en) > 0 and len(roles_en) > 0:
+                            vop.azure['emotion_category'][name] = {
+                                'styles_en': styles_en,
+                                'styles_zh': styles_zh,
+                                'roles_en': roles_en,
+                                'roles_zh': roles_zh
+                            }
+                    else:
+                        if len(styles_en) > 0:
+                            vop.azure['emotion_category'][name]['styles_en'] = styles_en
+                            vop.azure['emotion_category'][name]['styles_zh'] = styles_zh
+                        if len(roles_en) > 0:
+                            vop.azure['emotion_category'][name]['roles_en'] = roles_en
+                            vop.azure['emotion_category'][name]['roles_zh'] = roles_zh
+
+                vop.azure['voice_role'].append(speech["LocalName"])
+
+                vop.azure['voice_code'].append(speech["ShortName"])
+            # 修改原本的文件内容
+            vop.azure['speech_list_url'] = 'https://eastus.tts.speech.microsoft.com/cognitiveservices/voices/list'
+            vop.azure['aue'] = ['mp3', 'wav', 'pcm']
+            if sys.platform == 'win32':
+                file_path = os.getcwd() + '\\extensions\\batch-draw\\scripts\\voice_params.py'
+            else:
+                file_path = os.getcwd() + '/extensions/batch-draw/scripts/voice_params.py'
+            with open(file_path) as f:
+                content = f.read()
+            content = content.replace(old_azure_content, f'{vop.azure}')
+            print("新的语音配置是:----->", f'{content}')
+            with open(file_path, "w") as f:
+                f.write(content)
+            # voice_params可能有变化,重新导入获取最新的配置
+            from scripts import voice_params as vop
+            print("微软语音配置写入完成")
+
+
 role_dict = {
     '知甜_多情感': (vop.ali['emotion_category']['zhitian_emo_zh'], vop.ali['emotion_category']['zhitian_emo_en']),
     '知米_多情感': (vop.ali['emotion_category']['zhimi_emo_zh'], vop.ali['emotion_category']['zhimi_emo_en']),
@@ -195,8 +288,17 @@ def baidu_translate(query, from_lang, to_lang, appid, secret_key):
         translated_text += item['dst']
         if i != len(result['trans_result']) - 1:
             translated_text += '\n'
-    print("AI推文是：", f"\n{translated_text}")
     return translated_text
+
+
+def translate(text_list, appid, key):
+    result = []
+    for text in text_list:
+        result.append(baidu_translate(text, 'en', 'zh', appid, key))
+    return result
+
+
+get_and_deal_azure_speech_list()
 
 
 # All the image processing is done in this method
@@ -714,7 +816,8 @@ def ai_process_article(original_article, scene_number, api_cb, use_proxy):
     else:
         configs = {
             "access_token": f"{os.environ.get('ACCESS_TOKEN')}",
-            "base_url": os.environ.get('CHATGPT_BASE_URL')
+            "base_url": os.environ.get('CHATGPT_BASE_URL'),
+            "disable_history": True
         }
         if proxy is not None and proxy != "":
             configs['proxy'] = proxy.replace('http://', '')
@@ -763,7 +866,7 @@ def set_un_clickable():
     return gr.update(interactive=False)
 
 
-def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotion_intensity):
+def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotion_intensity, role_play):
     print("语音引擎类型是:", tts_type)
     if tts_type == "百度":
         tts_baidu(aue, per, pit, spd, text, vol)
@@ -771,6 +874,8 @@ def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotio
         tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity)
     elif tts_type == "华为":
         tts_huawei(aue, per, pit, spd, text, vol)
+    elif tts_type == '微软':
+        tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, role_play)
     return gr.update(interactive=True)
 
 
@@ -1123,6 +1228,59 @@ def tts_huawei(aue, per, pit, spd, text, vol):
             print("华为鉴权失败,请重试")
 
 
+def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, voice_role_play):
+    print("微软文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
+    file_count = 0
+    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+        file_count += len(files)
+    speech_key = os.environ.get('AZURE_SPEECH_KEY')
+    service_region = "eastus"
+    file_ext = aue
+    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+    if sys.platform == 'win32':
+        file_path = file_path.replace("/", "\\")
+    speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
+    audio_config = speechsdk.audio.AudioOutputConfig(filename=file_path)
+    voice_name = ''
+    speak_tag = 'version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN"'
+    for i, role_name in enumerate(vop.azure['voice_role']):
+        if per == role_name:
+            voice_name = vop.azure['voice_code'][i]
+    voice_style = ''
+    voice_role = ''
+    if '多情感' in per:
+        for key, persona in vop.azure['emotion_category'].items():
+            if key in voice_name:
+                for i, style in enumerate(vop.azure['emotion_category'][key]['styles_zh']):
+                    if voice_emotion == style:
+                        voice_style = vop.azure['emotion_category'][key]['styles_en'][i]
+                if 'roles_en' in vop.azure['emotion_category'][key]:
+                    for i, role in enumerate(vop.azure['emotion_category'][key]['roles_zh']):
+                        if voice_role_play == role:
+                            voice_role = vop.azure['emotion_category'][key]['roles_en'][i]
+        if voice_style != '' and voice_role != '':
+            text = f'<speak {speak_tag}><voice name="{voice_name}"><mstts:express-as role="{voice_role}" style="{voice_style}" styledegree="{voice_emotion_intensity}">{text}</mstts:express-as></voice></speak>'
+        elif voice_style != '' and voice_role == '':
+            text = f'<speak {speak_tag}><voice name="{voice_name}"><mstts:express-as role=""{voice_role}" style="{voice_style}" styledegree="{voice_emotion_intensity}">{text}</mstts:express-as></voice></speak>'
+        elif voice_style == '' and voice_role != '':
+            text = f'<speak {speak_tag}><voice name="{voice_name}"><mstts:express-as role="{voice_role}">{text}</mstts:express-as></voice></speak>'
+    else:
+        text = f'<speak {speak_tag}><voice name="{voice_name}">{text}</voice></speak>'
+    speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
+    result = speech_synthesizer.speak_ssml_async(text).get()
+    # Check result
+    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+        if sys.platform == 'win32':
+            print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path.replace('/', '\\'))
+        else:
+            print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+    elif result.reason == speechsdk.ResultReason.Canceled:
+        cancellation_details = result.cancellation_details
+        print("微软语音合成取消: {}".format(cancellation_details.reason))
+        if cancellation_details.reason == speechsdk.CancellationReason.Error:
+            print("微软语音合成异常: {}".format(cancellation_details.error_details))
+
+
 def change_tts(tts_type):
     # voice_role, audition, voice_speed, voice_pit, voice_vol, output_type, voice_emotion, voice_emotion_intensity
     if tts_type == '百度':
@@ -1136,9 +1294,14 @@ def change_tts(tts_type):
             gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.ali['aue'], value=vop.ali['aue'][0]), \
             gr.update(visible=True), gr.update(visible=True)
     elif tts_type == '华为':
-        return gr.update(choices=vop.huawei['voice_role'], value=vop.huawei['voice_role'][0]), gr.update(visible=True), \
+        return gr.update(choices=vop.huawei['voice_role'], value=vop.huawei['voice_role'][0]), gr.update(visible=False), \
             gr.update(minimum=-500, maximum=500, value=0, step=100), gr.update(minimum=-500, maximum=500, value=0, step=100), \
             gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.huawei['aue'], value=vop.huawei['aue'][0]), \
+            gr.update(visible=False), gr.update(visible=False)
+    elif tts_type == '微软':
+        return gr.update(choices=vop.azure['voice_role'], value=vop.azure['voice_role'][0]), gr.update(visible=False), \
+            gr.update(minimum=-500, maximum=500, value=0, step=100), gr.update(minimum=-500, maximum=500, value=0, step=100), \
+            gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.azure['aue'], value=vop.azure['aue'][0]), \
             gr.update(visible=False), gr.update(visible=False)
 
 
@@ -1149,13 +1312,36 @@ def change_voice_role(tts_type, role):
             for key in role_dict:
                 if key in role:
                     emo_zh, emo_en = role_dict[key]
-            return gr.update(choices=emo_zh, value=emo_zh[0], visible=True), gr.update(minimum=0.01, maximum=2.0, value=1, visible=True)
+                    break
+            return gr.update(choices=emo_zh, value=emo_zh[0], visible=True), gr.update(minimum=0.01, maximum=2.0, value=1, visible=True), gr.update(
+                visible=False)
         else:
-            return gr.update(visible=False), gr.update(visible=False)
+            return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
     elif tts_type == '百度':
-        return gr.update(visible=False), gr.update(visible=False)
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
     elif tts_type == '华为':
-        return gr.update(visible=False), gr.update(visible=False)
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    elif tts_type == '微软':
+        role_code = ''
+        for i, role_name in enumerate(vop.azure['voice_role']):
+            if role_name == role:
+                role_code = vop.azure['voice_code'][i]
+        if '多情感' in role:
+            for key, persona in vop.azure['emotion_category'].items():
+                if key in role_code:
+                    if 'roles_en' in vop.azure['emotion_category'][key]:
+                        return gr.update(choices=vop.azure['emotion_category'][key]['styles_zh'],
+                                         value=vop.azure['emotion_category'][key]['styles_zh'][0], visible=True), \
+                            gr.update(minimum=0.01, maximum=2.0, value=1, visible=True), \
+                            gr.update(choices=vop.azure['emotion_category'][key]['roles_zh'],
+                                      value=vop.azure['emotion_category'][key]['roles_zh'][0], visible=True)
+                    else:
+                        return gr.update(choices=vop.azure['emotion_category'][key]['styles_zh'],
+                                         value=vop.azure['emotion_category'][key]['styles_zh'][0], visible=True), \
+                            gr.update(minimum=0.01, maximum=2.0, value=1, visible=True), \
+                            gr.update(visible=False)
+        else:
+            return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 
 class Script(scripts.Script):
@@ -1275,8 +1461,8 @@ class Script(scripts.Script):
                     btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
                     btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_trans_prompt], outputs=[btn_save_ai_prompts])
                 with gr.Accordion(label="3.2 原文转语音"):
-                    # 其他语音合成引擎 '华为', '微软', '谷歌' 待开发
-                    voice_radio = gr.Radio(['百度', '阿里', '华为'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度', value='百度')
+                    voice_radio = gr.Radio(['百度', '阿里', '华为', '微软'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度',
+                                           value='百度')
                     gr.HTML(value="3.2.2 语音引擎参数")
                     with gr.Row():
                         with gr.Column(scale=15):
@@ -1288,7 +1474,9 @@ class Script(scripts.Script):
                         voice_emotion = gr.Dropdown(vop.ali['emotion_category']['zhitian_emo_zh'], label="情感类型",
                                                     value=vop.ali['emotion_category']['zhitian_emo_zh'][0], visible=False)
                         voice_emotion_intensity = gr.Slider(0.01, 2.0, label='emo_ints(情感强度)', value=1, visible=False)
-                    voice_role.change(change_voice_role, inputs=[voice_radio, voice_role], outputs=[voice_emotion, voice_emotion_intensity])
+                        role_play = gr.Dropdown([], label='角色扮演', value='', visible=False)
+                    voice_role.change(change_voice_role, inputs=[voice_radio, voice_role],
+                                      outputs=[voice_emotion, voice_emotion_intensity, role_play])
                     with gr.Row():
                         voice_speed = gr.Slider(0, 9, label='Speed(语速)', value=5, step=1)
                         voice_pit = gr.Slider(0, 9, label='Pit(语调)', value=5, step=1)
@@ -1301,7 +1489,7 @@ class Script(scripts.Script):
                     btn_txt_to_voice.click(set_un_clickable, outputs=[btn_txt_to_voice])
                     btn_txt_to_voice.click(tts_fun,
                                            inputs=[original_article, voice_speed, voice_pit, voice_vol, voice_role, output_type, voice_radio,
-                                                   voice_emotion, voice_emotion_intensity],
+                                                   voice_emotion, voice_emotion_intensity, role_play],
                                            outputs=[btn_txt_to_voice])
                 prompts_folder = gr.Textbox(
                     label="4. 输入包含提示词文本文件的文件夹路径",

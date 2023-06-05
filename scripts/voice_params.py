@@ -90,7 +90,91 @@ huawei = {
     'get_access_token_url': 'https://iam.cn-east-3.myhuaweicloud.com/v3/auth/tokens'
 }
 azure = {
-
+    'speech_list_url': 'https://eastus.tts.speech.microsoft.com/cognitiveservices/voices/list',
+    'aue': ['mp3', 'wav', 'pcm'],
+    'emotion_category': {
+        'Xiaoxiao': {
+            'styles_en': ['assistant', 'chat', 'customerservice', 'newscast', 'affectionate', 'angry', 'calm', 'cheerful', 'disgruntled',
+                          'fearful',
+                          'gentle', 'lyrical', 'sad', 'serious', 'poetry-reading', 'friendly'],
+            'styles_zh': ['助理', '闲聊', '客服', '新闻广播', '撒娇', '发怒', '平静', '愉快', '不满', '担心', '温和',
+                          '抒情', '悲哀', '严厉', '诗歌阅读', '友爱']},
+        'Yunxi': {
+            'styles_en': ['narration-relaxed', 'embarrassed', 'fearful', 'cheerful', 'disgruntled', 'serious', 'angry', 'sad', 'depressed',
+                          'chat',
+                          'assistant', 'newscast'],
+            'styles_zh': ['叙述放松', '尴尬', '担心', '愉快', '不满', '严厉', '发怒', '悲哀', '沮丧', '闲聊', '助理',
+                          '新闻广播'],
+            'roles_en': ['Narrator', 'YoungAdultMale', 'Boy'], 'roles_zh': ['旁白', '青年男性', '男孩']},
+        'Yunjian': {'styles_en': ['narration-relaxed', 'sports-commentary', 'sports-commentary-excited'],
+                    'styles_zh': ['叙述放松', '体育评论', '体育解说激动']},
+        'Xiaoyi': {
+            'styles_en': ['angry', 'disgruntled', 'affectionate', 'cheerful', 'fearful', 'sad', 'embarrassed', 'serious', 'gentle'],
+            'styles_zh': ['发怒', '不满', '撒娇', '愉快', '担心', '悲哀', '尴尬', '严厉', '温和']},
+        'Yunyang': {'styles_en': ['customerservice', 'narration-professional', 'newscast-casual'],
+                    'styles_zh': ['客服', '叙述专业人员', '新闻广播休闲']},
+        'Xiaohan': {
+            'styles_en': ['calm', 'fearful', 'cheerful', 'disgruntled', 'serious', 'angry', 'sad', 'gentle', 'affectionate', 'embarrassed'],
+            'styles_zh': ['平静', '担心', '愉快', '不满', '严厉', '发怒', '悲哀', '温和', '撒娇', '尴尬']},
+        'Xiaomeng': {'styles_en': ['chat'], 'styles_zh': ['闲聊']},
+        'Xiaomo': {
+            'styles_en': ['embarrassed', 'calm', 'fearful', 'cheerful', 'disgruntled', 'serious', 'angry', 'sad', 'depressed', 'affectionate',
+                          'gentle', 'envious'],
+            'styles_zh': ['尴尬', '平静', '担心', '愉快', '不满', '严厉', '发怒', '悲哀', '沮丧', '撒娇', '温和',
+                          '嫉妒'],
+            'roles_en': ['YoungAdultFemale', 'YoungAdultMale', 'OlderAdultFemale', 'OlderAdultMale', 'SeniorFemale', 'SeniorMale', 'Girl',
+                         'Boy'],
+            'roles_zh': ['年轻女性', '青年男性', '老年人成年女性', '老年人成年男性', '老年女性', '老年男性', '女孩', '男孩']},
+        'Xiaorui': {'styles_en': ['calm', 'fearful', 'angry', 'sad'], 'styles_zh': ['平静', '担心', '发怒', '悲哀']},
+        'Xiaoshuang': {'styles_en': ['chat'], 'styles_zh': ['闲聊']},
+        'Xiaoxuan': {'styles_en': ['calm', 'fearful', 'cheerful', 'disgruntled', 'serious', 'angry', 'gentle', 'depressed'],
+                     'styles_zh': ['平静', '担心', '愉快', '不满', '严厉', '发怒', '温和', '沮丧'],
+                     'roles_en': ['YoungAdultFemale', 'YoungAdultMale', 'OlderAdultFemale', 'OlderAdultMale', 'SeniorFemale',
+                                  'SeniorMale', 'Girl', 'Boy'],
+                     'roles_zh': ['年轻女性', '青年男性', '老年人成年女性', '老年人成年男性', '老年女性', '老年男性', '女孩',
+                                  '男孩']},
+        'Xiaozhen': {'styles_en': ['angry', 'disgruntled', 'cheerful', 'fearful', 'sad', 'serious'],
+                     'styles_zh': ['发怒', '不满', '愉快', '担心', '悲哀', '严厉']},
+        'Yunfeng': {'styles_en': ['angry', 'disgruntled', 'cheerful', 'fearful', 'sad', 'serious', 'depressed'],
+                    'styles_zh': ['发怒', '不满', '愉快', '担心', '悲哀', '严厉', '沮丧']},
+        'Yunhao': {'styles_en': ['advertisement-upbeat'], 'styles_zh': ['广告乐观']},
+        'Yunxia': {'styles_en': ['calm', 'fearful', 'cheerful', 'angry', 'sad'],
+                   'styles_zh': ['平静', '担心', '愉快', '发怒', '悲哀']},
+        'Yunye': {'styles_en': ['embarrassed', 'calm', 'fearful', 'cheerful', 'disgruntled', 'serious', 'angry', 'sad'],
+                  'styles_zh': ['尴尬', '平静', '担心', '愉快', '不满', '严厉', '发怒', '悲哀'],
+                  'roles_en': ['YoungAdultFemale', 'YoungAdultMale', 'OlderAdultFemale', 'OlderAdultMale', 'SeniorFemale',
+                               'SeniorMale', 'Girl', 'Boy'],
+                  'roles_zh': ['年轻女性', '青年男性', '老年人成年女性', '老年人成年男性', '老年女性', '老年男性', '女孩',
+                               '男孩']},
+        'Yunze': {
+            'styles_en': ['calm', 'fearful', 'cheerful', 'disgruntled', 'serious', 'angry', 'sad', 'depressed', 'documentary-narration'],
+            'styles_zh': ['平静', '担心', '愉快', '不满', '严厉', '发怒', '悲哀', '沮丧', '纪实叙事'],
+            'roles_en': ['OlderAdultMale', 'SeniorMale'], 'roles_zh': ['老年人成年男性', '老年男性']
+        }
+    },
+    'voice_number': 36,
+    'voice_role': [
+        '晓彤(女-中文(吴语，简体))', '云哲(男-中文(吴语，简体))', '晓敏(女-中文(粤语，简体))', '云松(男-中文(粤语，简体))',
+        '晓晓(女-中文(普通话，简体，多情感))', '云希(男-中文(普通话，简体，多情感，多角色))', '云健(男-中文(普通话，简体))',
+        '晓伊(女-中文(普通话，简体，多情感))', '云扬(男-中文(普通话，简体，多情感))', '晓辰(女-中文(普通话，简体))',
+        '晓涵(女-中文(普通话，简体，多情感))', '晓梦(女-中文(普通话，简体))', '晓墨(女-中文(普通话，简体，多情感，多角色))', '晓秋(女-中文(普通话，简体))',
+        '晓睿(女-中文(普通话，简体，多情感))', '晓双(女-中文(普通话，简体))', '晓萱(女-中文(普通话，简体，多情感，多角色))',
+        '晓颜(女-中文(普通话，简体))', '晓悠(女-中文(普通话，简体))', '晓甄(女-中文(普通话，简体))', '云枫(男-中文(普通话，简体，多情感))',
+        '云皓(男-中文(普通话，简体，多情感))', '云夏(男-中文(普通话，简体，多情感))', '云野(男-中文(普通话，简体，多情感，多角色))',
+        '云泽(男-中文(普通话，简体，多情感，多角色))', '云登(男-中文(中原官话河南，简体))', '晓北(女-中文(东北官话，简体))',
+        '晓妮(女-中文(中原官话陕西，简体))', '云翔(男-中文(冀鲁官话，简体))', '云希(男-中文(普通话，简体，多情感，多角色))', '曉曼(女-中文(粤语，繁体))',
+        '雲龍(男-中文(粤语，繁体))', '曉佳(女-中文(粤语，繁体))', '曉臻(女-中文(台湾普通话))', '雲哲(男-中文(台湾普通话))', '曉雨(女-中文(台湾普通话))'
+    ],
+    'voice_code': [
+        'wuu-CN-XiaotongNeural', 'wuu-CN-YunzheNeural', 'yue-CN-XiaoMinNeural', 'yue-CN-YunSongNeural', 'zh-CN-XiaoxiaoNeural',
+        'zh-CN-YunxiNeural', 'zh-CN-YunjianNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunyangNeural', 'zh-CN-XiaochenNeural',
+        'zh-CN-XiaohanNeural', 'zh-CN-XiaomengNeural', 'zh-CN-XiaomoNeural', 'zh-CN-XiaoqiuNeural', 'zh-CN-XiaoruiNeural',
+        'zh-CN-XiaoshuangNeural', 'zh-CN-XiaoxuanNeural', 'zh-CN-XiaoyanNeural', 'zh-CN-XiaoyouNeural', 'zh-CN-XiaozhenNeural',
+        'zh-CN-YunfengNeural', 'zh-CN-YunhaoNeural', 'zh-CN-YunxiaNeural', 'zh-CN-YunyeNeural', 'zh-CN-YunzeNeural',
+        'zh-CN-henan-YundengNeural', 'zh-CN-liaoning-XiaobeiNeural', 'zh-CN-shaanxi-XiaoniNeural', 'zh-CN-shandong-YunxiangNeural',
+        'zh-CN-sichuan-YunxiNeural', 'zh-HK-HiuMaanNeural', 'zh-HK-WanLungNeural', 'zh-HK-HiuGaaiNeural', 'zh-TW-HsiaoChenNeural',
+        'zh-TW-YunJheNeural', 'zh-TW-HsiaoYuNeural'
+    ]
 }
 amazon = {
 
