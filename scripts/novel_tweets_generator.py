@@ -426,25 +426,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
 
     default_prompt_dict = {
         "1.基本提示(通用)": ps.default_prompts,
-        "2.基本提示(通用修手)": ps.default_prompts_fix_hands,
-        "3.美女专属(真人-女)": ps.default_prompts_for_girl,
-        "4.五光十色(通用)": ps.default_prompts_colorful,
-        "5.高达机甲(通用)": ps.default_prompts_gundam,
-        "6.高达衣服(通用)": ps.default_prompts_gundam_clothes,
-        "7.软糯糖果(二次元-女)": ps.default_prompts_candy,
-        "8.盲盒风格(二次元)": ps.default_prompts_blind_box,
-        "9.汉服-唐(真人-女)": ps.default_prompts_hanfu_tang,
-        "10.汉服-宋(真人-女)": ps.default_prompts_hanfu_song,
-        "11.汉服-明(真人-女)": ps.default_prompts_hanfu_ming,
-        "12.汉服-晋(真人-女)": ps.default_prompts_hanfu_jin,
-        "13.汉服-汉(真人-女)": ps.default_prompts_hanfu_han,
-        "14.时尚女孩(通用偏二)": ps.default_prompts_fashion_girl,
-        "15.胶片风格(真人-女)": ps.default_prompts_film_girl,
-        "16.胶片风格(真人-女)": ps.default_prompts_pixel,
-        "17.敦煌风格(真人-女)": ps.default_prompts_dunhuang,
-        "18.A素体机娘(通用偏二)": ps.default_prompts_A_Mecha_REN,
-        "19.露西(赛博朋克)": ps.default_prompts_Lucy_Cyberpunk,
-        "20.jk制服(真人-女)": ps.default_prompts_jk
+        "2.基本提示(通用修手)": ps.default_prompts_fix_hands
     }
 
     if not need_default_prompt and default_prompt_type in default_prompt_dict:
@@ -786,22 +768,22 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
 
 def ai_process_article(original_article, scene_number, api_cb, use_proxy):
     proxy = None
-    default_pre_prompt = """你是专业的场景转换描述专家，我给你一段文字，并指定你需要转换的场景个数，你需要把他分为不同的场景。每个场景必须要细化，必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个场景中出现的人物是同一个，请统一这个任务的衣服，发色等细节。如果场景中出现多个人物，还必须要细化每个人物的细节。
-    你回答的场景要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个场景至少6个单词，如果场景中出现了人物,请给我添加人物数量的描述，例如 一个女孩，一个男孩，5个女孩等等。不要用一段话给我回复。请你将我给你的文字转换场景，并且按照这个格式给我：
-    1.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
-    2.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
-    3.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
-    ...
-    等等
-    你只用回复场景内容，其他的不要回复。
-    例如这一段话：在未来的世界中，地球上的资源已经枯竭，人类只能依靠太空探索来维持生存。在这个时代，有一位年轻的女子名叫艾米丽，她是一名出色的宇航员，拥有超凡的技能和无畏的勇气。她的目标是在银河系中寻找新的星球，为人类开辟新的家园。
-    将它分为三个场景，你需要这样回答我：
-    1.未来，世界末日，沙漠，无人，灰色的天空，风
-    2.星际飞船，驾驶舱，一个女孩，穿着太空服，坐着，表情平静，美丽，看着操作屏幕
-    3.太空，天空，星舰，恒星，行星，银河系
-    请你牢记这些规则，任何时候都不要忘记。
+    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，并指定你需要转换的场景分镜个数，你需要把他分为不同的场景。每个场景必须要细化，要给出人物，时间，地点，场景，描述，如果分镜不存在人物就不需要描述人物。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
+你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述，例如 一个女孩，一个男孩，5个女孩等等。不要用一段话给我回复。请你将我给你的文字转换场景分镜，并且按照这个格式给我：
+1.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
+2.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
+3.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
+...
+等等
+你只用回复场景分镜内容，其他的不要回复。
+例如这一段话：在未来的世界中，地球上的资源已经枯竭，人类只能依靠太空探索来维持生存。在这个时代，有一位年轻的女子名叫艾米丽，她是一名出色的宇航员，拥有超凡的技能和无畏的勇气。她的目标是在银河系中寻找新的星球，为人类开辟新的家园。
+将它分为三个场景，你需要这样回答我：
+1.未来，世界末日，沙漠，无人，灰色的天空，风
+2.星际飞船，驾驶舱，一个女孩，穿着太空服，坐着，表情平静，美丽，看着操作屏幕
+3.太空，天空，星舰，恒星，行星，银河系
+请你牢记这些规则，任何时候都不要忘记。
     """
-    prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景"
+    prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
@@ -1258,12 +1240,19 @@ def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intens
                     for i, role in enumerate(vop.azure['emotion_category'][key]['roles_zh']):
                         if voice_role_play == role:
                             voice_role = vop.azure['emotion_category'][key]['roles_en'][i]
-        if voice_style != '' and voice_role != '':
-            text = f'<speak {speak_tag}><voice name="{voice_name}"><mstts:express-as role="{voice_role}" style="{voice_style}" styledegree="{voice_emotion_intensity}">{text}</mstts:express-as></voice></speak>'
-        elif voice_style != '' and voice_role == '':
-            text = f'<speak {speak_tag}><voice name="{voice_name}"><mstts:express-as role=""{voice_role}" style="{voice_style}" styledegree="{voice_emotion_intensity}">{text}</mstts:express-as></voice></speak>'
-        elif voice_style == '' and voice_role != '':
-            text = f'<speak {speak_tag}><voice name="{voice_name}"><mstts:express-as role="{voice_role}">{text}</mstts:express-as></voice></speak>'
+        if voice_style == 'default':
+            style_tag = ''
+        else:
+            style_tag = f'style="{voice_style}" styledegree="{voice_emotion_intensity}"'
+        if voice_role == 'default':
+            role_tag = ''
+        else:
+            role_tag = f'role="{voice_role}"'
+        if style_tag != '' or role_tag != '':
+            express_as_tag = f'<mstts:express-as {role_tag} {style_tag}>{text}</mstts:express-as>'
+        else:
+            express_as_tag = text
+        text = f'<speak {speak_tag}><voice name="{voice_name}">{express_as_tag}</voice></speak>'
     else:
         text = f'<speak {speak_tag}><voice name="{voice_name}">{text}</voice></speak>'
     speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
@@ -1359,18 +1348,12 @@ class Script(scripts.Script):
                 with gr.Accordion(label="1. 默认提示词相关", open=True):
                     default_prompt_type = gr.Dropdown(
                         [
-                            "1.基本提示(通用)", "2.基本提示(通用修手)", "3.美女专属(真人-女)", "4.五光十色(通用)",
-                            "5.高达机甲(通用)", "6.高达衣服(通用)",
-                            "7.软糯糖果(二次元-女)", "8.盲盒风格(二次元)", "9.汉服-唐(真人-女)", "10.汉服-宋(真人-女)",
-                            "11.汉服-明(真人-女)", "12.汉服-晋(真人-女)", "13.汉服-汉(真人-女)",
-                            "14.时尚女孩(通用偏二)",
-                            "15.胶片风格(真人-女)", "16.像素风格(二次元)", "17.敦煌风格(真人-女)",
-                            "18.A素体机娘(通用偏二)",
-                            "19.露西(赛博朋克)", "20.jk制服(真人-女)"
+                            "1.基本提示(通用)",
+                            "2.基本提示(通用修手)"
                         ],
                         label="默认正面提示词类别",
                         value="1.基本提示(通用)")
-                    need_combine_prompt = gr.Checkbox(label="需要组合技(组合上方类别)？", value=False)
+                    need_combine_prompt = gr.Checkbox(label="需要组合技(组合上方类别)？", value=False, visible=False)
                     combine_prompt_type = gr.Textbox(
                         label="请输入你需要组合的类别组合，例如2+3+4，不要组合过多种类",
                         visible=False)
@@ -1434,7 +1417,7 @@ class Script(scripts.Script):
                             info="需要填写ACCESS_TOKEN"
                         )
                         cb_use_proxy = gr.Checkbox(
-                            label="使用代理",
+                            label="使用代理(一般无需代理)",
                             info="需要填写PROXY"
                         )
                         cb_trans_prompt = gr.Checkbox(
