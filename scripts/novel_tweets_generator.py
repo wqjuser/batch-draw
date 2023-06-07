@@ -496,7 +496,6 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
         else:
             copy_p.width = 1024
             copy_p.height = 576
-        copy_p.sampler_name = 'DPM++ SDE Karras'
         processed = process_images(copy_p)
         cps.append(processed)
         frame_count += 1
@@ -768,19 +767,15 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
 
 def ai_process_article(original_article, scene_number, api_cb, use_proxy):
     proxy = None
-    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，并指定你需要转换的场景分镜个数，你需要把他分为不同的场景。每个场景必须要细化，要给出人物，时间，地点，场景，描述，如果分镜不存在人物就不需要描述人物。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
-你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述，例如 一个女孩，一个男孩，5个女孩等等。不要用一段话给我回复。请你将我给你的文字转换场景分镜，并且按照这个格式给我：
-1.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
-2.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
-3.场景单词1, 场景单词2, 场景单词3, 场景单词4, 场景单词5, 场景单词6, ...
-...
-等等
+    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，并指定你需要转换的场景分镜个数，你需要把他分为不同的场景。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
+你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述。
 你只用回复场景分镜内容，其他的不要回复。
-例如这一段话：在未来的世界中，地球上的资源已经枯竭，人类只能依靠太空探索来维持生存。在这个时代，有一位年轻的女子名叫艾米丽，她是一名出色的宇航员，拥有超凡的技能和无畏的勇气。她的目标是在银河系中寻找新的星球，为人类开辟新的家园。
-将它分为三个场景，你需要这样回答我：
-1.未来，世界末日，沙漠，无人，灰色的天空，风
-2.星际飞船，驾驶舱，一个女孩，穿着太空服，坐着，表情平静，美丽，看着操作屏幕
-3.太空，天空，星舰，恒星，行星，银河系
+例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，所以我猜袁绍妈妈应该会很开心吧。
+将它分为四个场景，你需要这样回答我：
+1. 情侣, 一个女孩和一个男孩, 女孩黑色的长发, 微笑, 白色的裙子, 非常漂亮的面庞, 女孩手挽着一个男孩, 男孩黑色的短发, 穿着灰色运动装, 帅气的脸庞, 走在大学校园里, 
+2. 餐馆内，一个女孩, 黑色的长发, 白色的裙子, 坐在餐桌前, 一个男孩坐在女孩的对面, 黑色的短发, 灰色的外套, 两个人聊天.
+3. 酒庄内，一个女孩，微笑，黑色的长发，白色的裙子，站着，拿着几瓶红酒，
+4. 一个女孩，白色的裙子，黑色的长发，手上拿着两个包，站在豪华的客厅内，
 请你牢记这些规则，任何时候都不要忘记。
     """
     prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜"
@@ -824,10 +819,10 @@ def save_prompts(prompts, is_translate=False):
         novel_tweets_generator_prompts_sub_folder = 'outputs/novel_tweets_generator/prompts/' + f'{current_folders + 1}'
         os.makedirs(novel_tweets_generator_prompts_sub_folder, exist_ok=True)
         lines = prompts.splitlines()
-        for line in lines:
+        for i, line in enumerate(lines):
             parts = line.split()
             content = ' '.join(parts[1:])
-            filename = novel_tweets_generator_prompts_sub_folder + "/scene" + parts[0][:-1] + '.txt'
+            filename = novel_tweets_generator_prompts_sub_folder + '/scene' + f'{i+1}.txt'
             with open(filename, 'w') as f:
                 f.write(content)
         print("AI推文保存完成")
