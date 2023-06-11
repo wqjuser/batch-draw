@@ -6,6 +6,7 @@ import os
 import random
 import re
 import shlex
+import string
 import subprocess
 import sys
 import traceback
@@ -14,7 +15,10 @@ from datetime import datetime
 import gradio as gr
 import requests
 from PIL import Image, ImageDraw, ImageFont
+from gotrue.errors import AuthApiError
 from natsort import natsorted
+from openai import APIError
+
 import modules.scripts as scripts
 from modules import images
 from modules.processing import process_images
@@ -23,7 +27,7 @@ from scripts import prompts_styles as ps
 from scripts import voice_params as vop
 from revChatGPT.V1 import Chatbot as ChatbotV1
 from revChatGPT.V3 import Chatbot as ChatbotV3
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 import uuid
 from urllib.parse import quote_plus
 from urllib.parse import urlencode
@@ -33,6 +37,8 @@ from aliyunsdkcore.request import CommonRequest
 import base64
 import wave
 import azure.cognitiveservices.speech as speechsdk
+from supabase import create_client, Client
+from datetime import datetime, timedelta, timezone
 
 
 def process_string_tag(tag):
@@ -49,6 +55,33 @@ def process_float_tag(tag):
 
 def process_boolean_tag(tag):
     return True if (tag == "true") else False
+
+
+def chang_time_zone(utc_time_str):
+    utc_time = datetime.fromisoformat(utc_time_str)
+    east_eight_zone = timezone(timedelta(hours=8))
+    local_time = utc_time.astimezone(east_eight_zone)
+    local_time_str = local_time.strftime("%Y-%m-%d %H:%M:%S")
+    return local_time_str
+
+
+def compare_time(time_str):
+    date_format = "%Y-%m-%d %H:%M:%S"
+    timestamp = time.mktime(time.strptime(time_str, date_format))
+    now = time.time()
+    if timestamp > now:
+        return False
+    elif timestamp < now:
+        return True
+
+
+def call_rpc_function(param1: str, param2: str, param3: str):
+    response = supabase.rpc('get_env_by_user_v6', {
+        'param_user_id': param1,
+        'param_active_code': param2,
+        'param_mac_address': param3
+    }).execute()
+    return response
 
 
 prompt_tags = {
@@ -88,19 +121,32 @@ os.makedirs(novel_tweets_generator_audio_folder, exist_ok=True)
 current_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_path)
 parent_dir = os.path.dirname(current_dir)
-if sys.platform == 'win32':
-    print('当前系统是Windows')
-    load_dotenv(dotenv_path=f"{parent_dir}\\.env", override=True, verbose=True)
-elif sys.platform == 'linux':
-    print('当前系统是Linux')
-    load_dotenv(dotenv_path=f"{parent_dir}/.env", override=True, verbose=True)
+env_path = f"{parent_dir}\\.env" if sys.platform == 'win32' else f"{parent_dir}/.env"
+load_dotenv(dotenv_path=env_path, override=True, verbose=True)
 mac = uuid.getnode()
 mac_address = ':'.join(("%012X" % mac)[i:i + 2] for i in range(0, 12, 2))
-client = AcsClient(
-    os.environ.get('ALIYUN_ACCESSKEY_ID'),
-    os.environ.get('ALIYUN_ACCESSKEY_SECRET'),
-    "cn-shanghai"
-)
+url = os.environ.get("SUPABASE_URL")
+key = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
+userid = os.environ.get("USER_ID")
+active_code = os.environ.get("ACTIVE_CODE")
+realtime = ''
+is_expired = True
+if userid != '' and active_code != '':
+    res_data = call_rpc_function(userid, active_code, mac_address)
+    env_data = {}
+    try:
+        env_data = res_data.data[0]['data']['env']
+        env_expire_time = res_data.data[0]['data']['expire_at']
+        realtime = chang_time_zone(env_expire_time)
+        set_key(env_path, 'EXPIRE_AT', realtime)
+        is_expired = compare_time(realtime)
+        if res_data.data[0]['code'] == 0:
+            set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。')
+    except APIError as e:
+        print("获取环境配置失败，请重启webui")
+    except IndexError as e:
+        print("获取环境配置失败，请重启webui")
 
 
 def get_and_deal_azure_speech_list():
@@ -110,21 +156,18 @@ def get_and_deal_azure_speech_list():
         voice_number = vop.azure['voice_number']
     except KeyError:
         voice_number = 0
-    appid = os.environ.get('BAIDU_TRANSLATE_APPID')
-    key = os.environ.get('BAIDU_TRANSLATE_KEY')
+    appid = env_data['BAIDU_TRANSLATE_APPID']
+    key = env_data['BAIDU_TRANSLATE_KEY']
     chinese_speech_list = []
     headers = {
-        'Ocp-Apim-Subscription-Key': os.environ.get('AZURE_SPEECH_KEY')
+        'Ocp-Apim-Subscription-Key': env_data['AZURE_SPEECH_KEY']
     }
     azure_speech_list_response = requests.get(vop.azure['speech_list_url'], headers=headers)
     if azure_speech_list_response.status_code == 200:
-
-        print("获取微软语音列表成功")
         speech_list = azure_speech_list_response.json()
         for i, speech in enumerate(speech_list):
             if 'Chinese' in speech['LocaleName']:
                 chinese_speech_list.append(speech)
-        print("微软中文语音数量是:----->", f"{len(chinese_speech_list)}")
         if voice_number == len(chinese_speech_list):
             print('微软语音配置未改变，无需写入')
         else:
@@ -175,7 +218,6 @@ def get_and_deal_azure_speech_list():
                 vop.azure['voice_role'].append(speech["LocalName"])
 
                 vop.azure['voice_code'].append(speech["ShortName"])
-            # 修改原本的文件内容
             vop.azure['speech_list_url'] = 'https://eastus.tts.speech.microsoft.com/cognitiveservices/voices/list'
             vop.azure['aue'] = ['mp3', 'wav', 'pcm']
             if sys.platform == 'win32':
@@ -185,10 +227,8 @@ def get_and_deal_azure_speech_list():
             with open(file_path) as f:
                 content = f.read()
             content = content.replace(old_azure_content, f'{vop.azure}')
-            print("新的语音配置是:----->", f'{content}')
             with open(file_path, "w") as f:
                 f.write(content)
-            # voice_params可能有变化,重新导入获取最新的配置
             from scripts import voice_params as vop
             print("微软语音配置写入完成")
 
@@ -298,7 +338,8 @@ def translate(text_list, appid, key):
     return result
 
 
-get_and_deal_azure_speech_list()
+if userid != '' and active_code != '':
+    get_and_deal_azure_speech_list()
 
 
 # All the image processing is done in this method
@@ -765,9 +806,9 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
                                                   rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
 
-def ai_process_article(original_article, scene_number, api_cb, use_proxy):
+def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy):
     proxy = None
-    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，并指定你需要转换的场景分镜个数，你需要把他分为不同的场景。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
+    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，并指定你需要转换的场景分镜个数，你需要把他分为不同的场景。如果说我让你转换为0个场景，那么你需要根据文字内容自己分析可以转换成几个场景。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
 你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述。
 你只用回复场景分镜内容，其他的不要回复。
 例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，所以我猜袁绍妈妈应该会很开心吧。
@@ -778,13 +819,15 @@ def ai_process_article(original_article, scene_number, api_cb, use_proxy):
 4. 一个女孩，白色的裙子，黑色的长发，手上拿着两个包，站在豪华的客厅内，
 请你牢记这些规则，任何时候都不要忘记。
     """
+    if ai_prompt != '':
+        default_pre_prompt = ai_prompt
     prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
     if api_cb:
         try:
-            openai_key = os.environ.get('KEY')
+            openai_key = env_data['KEY']
             chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None)
             response = chatbot.ask(prompt=prompt)
         except Exception as e:
@@ -792,8 +835,8 @@ def ai_process_article(original_article, scene_number, api_cb, use_proxy):
             response = "抱歉，发生了一些意外，请重试。"
     else:
         configs = {
-            "access_token": f"{os.environ.get('ACCESS_TOKEN')}",
-            "base_url": os.environ.get('CHATGPT_BASE_URL'),
+            "access_token": f"{env_data['ACCESS_TOKEN']}",
+            "base_url": env_data['CHATGPT_BASE_URL'],
             "disable_history": True
         }
         if proxy is not None and proxy != "":
@@ -811,8 +854,8 @@ def ai_process_article(original_article, scene_number, api_cb, use_proxy):
 def save_prompts(prompts, is_translate=False):
     if prompts != "":
         print("开始处理并保存AI推文")
-        appid = os.environ.get('BAIDU_TRANSLATE_APPID')
-        key = os.environ.get('BAIDU_TRANSLATE_KEY')
+        appid = env_data['BAIDU_TRANSLATE_APPID']
+        key = env_data['BAIDU_TRANSLATE_KEY']
         if is_translate:
             prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
         current_folders = count_subdirectories(novel_tweets_generator_prompts_folder)
@@ -822,7 +865,7 @@ def save_prompts(prompts, is_translate=False):
         for i, line in enumerate(lines):
             parts = line.split()
             content = ' '.join(parts[1:])
-            filename = novel_tweets_generator_prompts_sub_folder + '/scene' + f'{i+1}.txt'
+            filename = novel_tweets_generator_prompts_sub_folder + '/scene' + f'{i + 1}.txt'
             with open(filename, 'w') as f:
                 f.write(content)
         print("AI推文保存完成")
@@ -879,8 +922,8 @@ def tts_baidu(aue, per, pit, spd, text, vol):
     # get access token
     data = {
         'grant_type': 'client_credentials',
-        'client_id': os.environ.get('BAIDU_VOICE_API_KEY'),
-        'client_secret': os.environ.get('BAIDU_VOICE_SECRET_KEY'),
+        'client_id': env_data['BAIDU_VOICE_API_KEY'],
+        'client_secret': env_data['BAIDU_VOICE_SECRET_KEY'],
     }
     tts_url = vop.baidu['short_voice_url'] if is_short else vop.baidu['long_voice_create_url']
     response = requests.post(vop.baidu['get_access_token_url'], data=data)
@@ -994,6 +1037,11 @@ def tts_baidu(aue, per, pit, spd, text, vol):
 
 
 def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity):
+    client = AcsClient(
+        env_data['ALIYUN_ACCESSKEY_ID'],
+        env_data['ALIYUN_ACCESSKEY_SECRET'],
+        "cn-shanghai"
+    )
     file_count = 0
     for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
         file_count += len(files)
@@ -1005,7 +1053,7 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
         tts_url = vop.ali['short_voice_url']
     else:
         tts_url = vop.ali['long_voice_url']
-    app_key = os.environ.get('ALIYUN_APPKEY')
+    app_key = env_data['ALIYUN_APPKEY']
     for i, role in enumerate(vop.ali['voice_role']):
         if per == role:
             if '多情感' in role:
@@ -1138,10 +1186,10 @@ def tts_huawei(aue, per, pit, spd, text, vol):
                     "methods": ["hw_ak_sk"],
                     "hw_ak_sk": {
                         "access": {
-                            "key": os.environ.get('HUAWEI_AK')
+                            "key": env_data['HUAWEI_AK']
                         },
                         "secret": {
-                            "key": os.environ.get('HUAWEI_SK')
+                            "key": env_data['HUAWEI_SK']
                         }
                     }
                 },
@@ -1210,7 +1258,7 @@ def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intens
     file_count = 0
     for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
         file_count += len(files)
-    speech_key = os.environ.get('AZURE_SPEECH_KEY')
+    speech_key = env_data['AZURE_SPEECH_KEY']
     service_region = "eastus"
     file_ext = aue
     file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
@@ -1328,6 +1376,36 @@ def change_voice_role(tts_type, role):
             return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 
+def sign_up(code):
+    random_str1 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    random_str2 = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
+    random_str3 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    try:
+        email = f"{random_str1}@{random_str2}.com"
+        res = supabase.auth.sign_up({
+            "email": email,
+            "password": random_str3
+        })
+        res_dict = json.loads(res.json())
+        if res_dict["user"]:
+            user_id = res_dict["user"]["id"]
+            res = call_rpc_function(user_id, code, mac_address)
+            expire_time = chang_time_zone(res.data[0]['data']['expires_at'])
+            if res.data[0]['code'] == 0:
+                set_key(env_path, 'USER_ID', user_id)
+                set_key(env_path, 'ACTIVE_CODE', code)
+                set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
+            else:
+                print("激活异常:----->", res.data[0]['msg'])
+                return gr.update(visible=True), gr.update(value=f"激活异常，{res.data[0]['msg']}")
+            return gr.update(visible=False), gr.update(value='激活成功，请重启webui后生效')
+    except APIError as error:
+        return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息----->{}'.format(error))
+    except AuthApiError as err:
+        return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息----->{}'.format(err))
+    return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息，有疑问请联系开发者')
+
+
 class Script(scripts.Script):
 
     def title(self):
@@ -1338,6 +1416,22 @@ class Script(scripts.Script):
 
     def ui(self, is_img2img):
         gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
+        with gr.Accordion(label="注册和激活", open=True):
+            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，首次使用需要填写，激活后隐藏该行', visible=is_expired)
+            ensure_sign_up = gr.Button(value='注册并激活', visible=is_expired)
+            if is_expired:
+                active_info_text = '脚本未激活或者已过期，请激活！'
+            else:
+                active_info_text = os.environ.get('ACTIVE_INFO')
+            active_info = gr.Textbox(label="激活信息是", value=active_info_text,
+                                     interactive=False)
+            refresh_active_info = gr.Button(value='刷新激活信息')
+
+            def update_active_info():
+                return gr.update(value=active_info_text)
+
+            refresh_active_info.click(update_active_info, outputs=[active_info])
+            ensure_sign_up.click(sign_up, inputs=[active_code_input], outputs=[active_info])
         with gr.Accordion(label="基础属性，必填项，每一项都不能为空", open=True):
             with gr.Column(variant='panel'):
                 with gr.Accordion(label="1. 默认提示词相关", open=True):
@@ -1396,10 +1490,11 @@ class Script(scripts.Script):
                     value=""
                 )
                 with gr.Accordion(label="3.1 AI处理原文"):
+                    ai_prompt = gr.Textbox(label='自行输入AI提示词，一般不需要输入', value='')
                     scene_number = gr.Number(
                         label="输入要生成的场景数量",
                         value=10,
-                        min=1
+                        min=0
                     )
                     with gr.Row():
                         api_cb = gr.Checkbox(
@@ -1434,7 +1529,7 @@ class Script(scripts.Script):
                         label="请输入推文保存的路径，若为空则保存在outputs/novel_tweets_generator/prompts路径下的按序号递增的文件夹下")
 
                     deal_with_ai.click(set_un_clickable, outputs=[deal_with_ai])
-                    deal_with_ai.click(ai_process_article, inputs=[original_article, scene_number, api_cb, cb_use_proxy],
+                    deal_with_ai.click(ai_process_article, inputs=[ai_prompt, original_article, scene_number, api_cb, cb_use_proxy],
                                        outputs=[ai_article, deal_with_ai])
                     btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
                     btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_trans_prompt], outputs=[btn_save_ai_prompts])
@@ -1527,17 +1622,19 @@ class Script(scripts.Script):
                                 value=""
                             )
 
-        return [prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
+        return [active_code_input, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
+                text_watermark, text_watermark_font, text_watermark_target,
                 text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path,
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
-                scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
+                ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol,
                 audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity]
 
-    def run(self, p, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font, text_watermark_target,
+    def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
+            text_watermark, text_watermark_font, text_watermark_target,
             text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path, default_prompt_type,
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
-            original_article, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
+            original_article, ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition, btn_txt_to_voice,
             output_type, voice_emotion, voice_emotion_intensity):
         p.do_not_save_grid = True
