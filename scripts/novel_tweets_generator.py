@@ -137,11 +137,11 @@ if userid != '' and active_code != '':
     env_data = {}
     try:
         env_data = res_data.data[0]['data']['env']
-        env_expire_time = res_data.data[0]['data']['expire_at']
-        realtime = chang_time_zone(env_expire_time)
-        set_key(env_path, 'EXPIRE_AT', realtime)
-        is_expired = compare_time(realtime)
         if res_data.data[0]['code'] == 0:
+            env_expire_time = res_data.data[0]['data']['expire_at']
+            realtime = chang_time_zone(env_expire_time)
+            set_key(env_path, 'EXPIRE_AT', realtime)
+            is_expired = compare_time(realtime)
             set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。')
     except APIError as e:
         print("获取环境配置失败，请重启webui")
