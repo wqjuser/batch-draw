@@ -1390,8 +1390,8 @@ def sign_up(code):
         if res_dict["user"]:
             user_id = res_dict["user"]["id"]
             res = call_rpc_function(user_id, code, mac_address)
-            expire_time = chang_time_zone(res.data[0]['data']['expires_at'])
             if res.data[0]['code'] == 0:
+                expire_time = chang_time_zone(res.data[0]['data']['expire_at'])
                 set_key(env_path, 'USER_ID', user_id)
                 set_key(env_path, 'ACTIVE_CODE', code)
                 set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
