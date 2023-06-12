@@ -9,6 +9,7 @@ import shlex
 import string
 import subprocess
 import sys
+import threading
 import traceback
 from datetime import datetime
 
@@ -132,9 +133,9 @@ userid = os.environ.get("USER_ID")
 active_code = os.environ.get("ACTIVE_CODE")
 realtime = ''
 is_expired = True
+env_data = {}
 if userid != '' and active_code != '':
     res_data = call_rpc_function(userid, active_code, mac_address)
-    env_data = {}
     try:
         env_data = res_data.data[0]['data']['env']
         if res_data.data[0]['code'] == 0:
@@ -821,7 +822,10 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
     """
     if ai_prompt != '':
         default_pre_prompt = ai_prompt
-    prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜。如果说我让你转换为0个场景，那么你需要根据文字内容自己分析可以转换成几个场景。"
+    if int(scene_number) != 0:
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必需将其转换为{int(scene_number)}个场景分镜。"
+    else:
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
@@ -1492,27 +1496,24 @@ class Script(scripts.Script):
                 with gr.Accordion(label="3.1 AI处理原文"):
                     ai_prompt = gr.Textbox(label='自行输入AI提示词，一般不需要输入', value='')
                     scene_number = gr.Number(
-                        label="输入要生成的场景数量",
+                        label="输入要生成的场景数量(若改为0则由AI自动推断文本可转换的场景数量)",
                         value=10,
                         min=0
                     )
                     with gr.Row():
                         api_cb = gr.Checkbox(
                             label="使用api方式处理",
-                            info="需要填写KEY",
                             value=True
                         )
                         web_cb = gr.Checkbox(
-                            label="使用web方式处理",
-                            info="需要填写ACCESS_TOKEN"
+                            label="使用web方式处理"
                         )
                         cb_use_proxy = gr.Checkbox(
-                            label="使用代理(一般无需代理)",
-                            info="需要填写PROXY"
+                            label="使用代理(一般无需代理)"
                         )
                         cb_trans_prompt = gr.Checkbox(
                             label="翻译AI推文,保存推文时生效",
-                            info="需要填写百度翻译的appid和key"
+                            value=True
                         )
                         api_cb.change(change_state, inputs=[api_cb], outputs=[web_cb])
                         web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb])
