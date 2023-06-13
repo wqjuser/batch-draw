@@ -9,9 +9,7 @@ import shlex
 import string
 import subprocess
 import sys
-import threading
 import traceback
-from datetime import datetime
 
 import gradio as gr
 import requests
@@ -142,11 +140,11 @@ if userid != '' and active_code != '':
             env_expire_time = res_data.data[0]['data']['expire_at']
             realtime = chang_time_zone(env_expire_time)
             set_key(env_path, 'EXPIRE_AT', realtime)
+            os.environ['CHATGPT_BASE_URL'] = env_data['CHATGPT_BASE_URL']
+            os.environ['API_URL'] = env_data['API_URL']
             is_expired = compare_time(realtime)
             set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。')
     except APIError as e:
-        print("获取环境配置失败，请重启webui")
-    except IndexError as e:
         print("获取环境配置失败，请重启webui")
 
 
@@ -158,7 +156,7 @@ def get_and_deal_azure_speech_list():
     except KeyError:
         voice_number = 0
     appid = env_data['BAIDU_TRANSLATE_APPID']
-    key = env_data['BAIDU_TRANSLATE_KEY']
+    sec_key = env_data['BAIDU_TRANSLATE_KEY']
     chinese_speech_list = []
     headers = {
         'Ocp-Apim-Subscription-Key': env_data['AZURE_SPEECH_KEY']
@@ -185,10 +183,10 @@ def get_and_deal_azure_speech_list():
                     roles_zh = []
                     if 'StyleList' in speech:
                         styles_en = speech['StyleList']
-                        styles_zh = translate(speech['StyleList'], appid, key)
+                        styles_zh = translate(speech['StyleList'], appid, sec_key)
                     if 'RolePlayList' in speech:
                         roles_en = speech['RolePlayList']
-                        roles_zh = translate(speech['RolePlayList'], appid, key)
+                        roles_zh = translate(speech['RolePlayList'], appid, sec_key)
                     name = speech['DisplayName']
                     if name not in vop.azure['emotion_category']:
                         if len(styles_en) > 0 and len(roles_en) == 0:
@@ -834,13 +832,12 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
             openai_key = env_data['KEY']
             chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None)
             response = chatbot.ask(prompt=prompt)
-        except Exception as e:
-            print(f"Error: {e}")
+        except Exception as error:
+            print(f"Error: {error}")
             response = "抱歉，发生了一些意外，请重试。"
     else:
         configs = {
             "access_token": f"{env_data['ACCESS_TOKEN']}",
-            "base_url": env_data['CHATGPT_BASE_URL'],
             "disable_history": True
         }
         if proxy is not None and proxy != "":
@@ -849,8 +846,8 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
             chatbot = ChatbotV1(config=configs)
             for data in chatbot.ask(prompt):
                 response = data["message"]
-        except Exception as e:
-            print(f"Error: {e}")
+        except Exception as error:
+            print(f"Error: {error}")
             response = "抱歉，发生了一些意外，请重试。"
     return gr.update(value=response), gr.update(interactive=True)
 
@@ -1399,6 +1396,8 @@ def sign_up(code):
                 set_key(env_path, 'USER_ID', user_id)
                 set_key(env_path, 'ACTIVE_CODE', code)
                 set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
+                os.environ['CHATGPT_BASE_URL'] = res.data[0]['data']['env']['CHATGPT_BASE_URL']
+                os.environ['API_URL'] = res.data[0]['data']['env']['API_URL']
             else:
                 print("激活异常:----->", res.data[0]['msg'])
                 return gr.update(visible=True), gr.update(value=f"激活异常，{res.data[0]['msg']}")
