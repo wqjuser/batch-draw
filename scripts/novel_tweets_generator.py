@@ -24,10 +24,10 @@ from modules.processing import process_images
 from modules.shared import state
 from scripts import prompts_styles as ps
 from scripts import voice_params as vop
+from scripts import batch_draw_utils
 from revChatGPT.V1 import Chatbot as ChatbotV1
 from revChatGPT.V3 import Chatbot as ChatbotV3
 from dotenv import load_dotenv, set_key
-import uuid
 from urllib.parse import quote_plus
 from urllib.parse import urlencode
 import time
@@ -112,18 +112,21 @@ prompt_tags = {
 current_date = datetime.now()
 formatted_date = current_date.strftime("%Y-%m-%d")
 novel_tweets_generator_images_folder = "outputs/novel_tweets_generator/images"
-os.makedirs(novel_tweets_generator_images_folder, exist_ok=True)
 novel_tweets_generator_prompts_folder = "outputs/novel_tweets_generator/prompts"
-os.makedirs(novel_tweets_generator_prompts_folder, exist_ok=True)
 novel_tweets_generator_audio_folder = "outputs/novel_tweets_generator/audio"
+os.makedirs(novel_tweets_generator_prompts_folder, exist_ok=True)
+os.makedirs(novel_tweets_generator_images_folder, exist_ok=True)
 os.makedirs(novel_tweets_generator_audio_folder, exist_ok=True)
+if sys.platform == 'win32':
+    novel_tweets_generator_prompts_folder.replace('/', '\\')
+    novel_tweets_generator_audio_folder.replace('/', '\\')
+    novel_tweets_generator_images_folder.replace('/', '\\')
 current_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_path)
 parent_dir = os.path.dirname(current_dir)
 env_path = f"{parent_dir}\\.env" if sys.platform == 'win32' else f"{parent_dir}/.env"
 load_dotenv(dotenv_path=env_path, override=True, verbose=True)
-mac = uuid.getnode()
-mac_address = ':'.join(("%012X" % mac)[i:i + 2] for i in range(0, 12, 2))
+machine_code = batch_draw_utils.get_unique_machine_code()
 url = os.environ.get("SUPABASE_URL")
 key = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
@@ -133,10 +136,10 @@ realtime = ''
 is_expired = True
 env_data = {}
 if userid != '' and active_code != '':
-    res_data = call_rpc_function(userid, active_code, mac_address)
+    res_data = call_rpc_function(userid, active_code, machine_code)
     try:
-        env_data = res_data.data[0]['data']['env']
         if res_data.data[0]['code'] == 0:
+            env_data = res_data.data[0]['data']['env']
             env_expire_time = res_data.data[0]['data']['expire_at']
             realtime = chang_time_zone(env_expire_time)
             set_key(env_path, 'EXPIRE_AT', realtime)
@@ -146,6 +149,41 @@ if userid != '' and active_code != '':
             set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。')
     except APIError as e:
         print("获取环境配置失败，请重启webui")
+
+
+def sign_up(code):
+    global env_data
+    random_str1 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    random_str2 = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
+    random_str3 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    try:
+        email = f"{random_str1}@{random_str2}.com"
+        res = supabase.auth.sign_up({
+            "email": email,
+            "password": random_str3
+        })
+        res_dict = json.loads(res.json())
+        if res_dict["user"]:
+            user_id = res_dict["user"]["id"]
+            res = call_rpc_function(user_id, code, machine_code)
+            if res.data[0]['code'] == 0:
+                expire_time = chang_time_zone(res.data[0]['data']['expire_at'])
+                set_key(env_path, 'EXPIRE_AT', expire_time)
+                env_data = res.data[0]['data']['env']
+                set_key(env_path, 'USER_ID', user_id)
+                set_key(env_path, 'ACTIVE_CODE', code)
+                set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
+                os.environ['CHATGPT_BASE_URL'] = res.data[0]['data']['env']['CHATGPT_BASE_URL']
+                os.environ['API_URL'] = res.data[0]['data']['env']['API_URL']
+            else:
+                print("激活异常:----->", res.data[0]['msg'])
+                return gr.update(visible=True), gr.update(value=f"激活异常，{res.data[0]['msg']}")
+            return gr.update(visible=False), gr.update(value='激活成功，请重启webui后生效')
+    except APIError as error:
+        return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息----->{}'.format(error))
+    except AuthApiError as err:
+        return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息----->{}'.format(err))
+    return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息，有疑问请联系开发者')
 
 
 def get_and_deal_azure_speech_list():
@@ -341,12 +379,26 @@ if userid != '' and active_code != '':
     get_and_deal_azure_speech_list()
 
 
+def get_last_subdir(path):
+    # 获取目录下的所有子目录并按顺序排序
+    sub_dirs = sorted([d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))])
+
+    # 如果存在子目录，返回最后一个子目录的完整路径，否则返回None
+    return os.path.join(path, sub_dirs[-1]) if sub_dirs else None
+
+
 # All the image processing is done in this method
 def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_path, text_watermark, text_watermark_color,
             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
             default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h):
     if prompts_folder == "":
-        prompts_folder = os.getcwd() + "/" + novel_tweets_generator_prompts_folder
+        folder_prefix = os.getcwd() + "/" if sys.platform != 'win32' else os.getcwd() + "\\"
+        prompts_folder = folder_prefix + novel_tweets_generator_prompts_folder
+        if get_last_subdir(prompts_folder) is not None:
+            prompts_folder = get_last_subdir(prompts_folder)
+        else:
+            print(f"提示词文件夹{prompts_folder}中不存在提示词文件")
+            return
         prompts_folder = prompts_folder.replace("\\", "/")
         prompts_folder = prompts_folder.replace('"', '')
     prompts_folders = count_subdirectories(prompts_folder)
@@ -527,7 +579,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                 file_encoding = result['encoding']
             with open(prompt_file, "r", encoding=file_encoding) as f:
                 individual_prompt = f.read().strip()
-            copy_p.prompt = f"({individual_prompt.replace('.', ' ')}:1.5), {copy_p.prompt}"
+            copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
             file_idx += 1
         copy_p.seed = int(random.randrange(4294967294))
         if cb_h:
@@ -807,23 +859,23 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
 
 def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy):
     proxy = None
-    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，并指定你需要转换的场景分镜个数，你需要把他分为不同的场景。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
+    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
 你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述。
-你只用回复场景分镜内容，其他的不要回复。
+你还需要分析场景分镜中各个物体的比重并且将比重按照提示的格式放在每个单词的后面。你只用回复场景分镜内容，其他的不要回复。
 例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，所以我猜袁绍妈妈应该会很开心吧。
 将它分为四个场景，你需要这样回答我：
-1. 情侣, 一个女孩和一个男孩, 女孩黑色的长发, 微笑, 白色的裙子, 非常漂亮的面庞, 女孩手挽着一个男孩, 男孩黑色的短发, 穿着灰色运动装, 帅气的脸庞, 走在大学校园里, 
-2. 餐馆内，一个女孩, 黑色的长发, 白色的裙子, 坐在餐桌前, 一个男孩坐在女孩的对面, 黑色的短发, 灰色的外套, 两个人聊天.
-3. 酒庄内，一个女孩，微笑，黑色的长发，白色的裙子，站着，拿着几瓶红酒，
-4. 一个女孩，白色的裙子，黑色的长发，手上拿着两个包，站在豪华的客厅内，
-请你牢记这些规则，任何时候都不要忘记。
-    """
+1. 情侣, (一个女孩和一个男孩:1.5), (女孩黑色的长发:1.2), 微笑, (白色的裙子:1.2), 非常漂亮的面庞, (女孩手挽着一个男孩:1.5), 男孩黑色的短发, (穿着灰色运动装, 帅气的脸庞:1.2), 走在大学校园里, 
+2. 餐馆内，一个女孩, (黑色的长发, 白色的裙子:1.5), 坐在餐桌前, 一个男孩坐在女孩的对面, (黑色的短发, 灰色的外套:1.5), 两个人聊天.
+3. 酒庄内，一个女孩，微笑，(黑色的长发，白色的裙子:1.2)，(站着:1.5)，(拿着1瓶红酒:1.5)
+4. 一个女孩，(白色的裙子，黑色的长发:1.5)，(手上拿着两个包:1.5)，站在豪华的客厅内，
+不要拘泥于我给你示例中的权重数字，权重的范围在1到2之前的权重值。你需要按照分镜中的画面自己判断权重。注意回复中的所有标点符号请使用英文的标点符号包括逗号，不要出现句号，请你牢记这些规则，任何时候都不要忘记。
+"""
     if ai_prompt != '':
         default_pre_prompt = ai_prompt
     if int(scene_number) != 0:
-        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必需将其转换为{int(scene_number)}个场景分镜。"
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜。"
     else:
-        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。"
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。你不需要向我解释你转换场景个数和权重的原因，你只用回复场景分镜内容，其他的不要回复"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
@@ -844,12 +896,29 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
             configs['proxy'] = proxy.replace('http://', '')
         try:
             chatbot = ChatbotV1(config=configs)
-            for data in chatbot.ask(prompt):
+            for data in chatbot.ask(prompt, auto_continue=True):
                 response = data["message"]
         except Exception as error:
             print(f"Error: {error}")
             response = "抱歉，发生了一些意外，请重试。"
+    response = response.replace('，', ', ')
     return gr.update(value=response), gr.update(interactive=True)
+
+
+def deepl_translate_text(api_key, text, target_lang: str = 'EN-US'):
+    deepl_url = 'https://api-free.deepl.com/v2/translate'
+    params = {
+        'auth_key': api_key,
+        'text': text,
+        'target_lang': target_lang
+    }
+    response = requests.post(deepl_url, data=params)
+    if response.status_code == 200:
+        result = json.loads(response.content.decode('utf-8'))
+        translated_text = result['translations'][0]['text']
+        return translated_text
+    else:
+        return None
 
 
 def save_prompts(prompts, is_translate=False):
@@ -857,20 +926,28 @@ def save_prompts(prompts, is_translate=False):
         print("开始处理并保存AI推文")
         appid = env_data['BAIDU_TRANSLATE_APPID']
         key = env_data['BAIDU_TRANSLATE_KEY']
+        deepl_api_key = env_data['DEEPL_API_KEY']
         if is_translate:
-            prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
+            prompts = deepl_translate_text(deepl_api_key, prompts)
+            if prompts is None:
+                prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
         current_folders = count_subdirectories(novel_tweets_generator_prompts_folder)
         novel_tweets_generator_prompts_sub_folder = 'outputs/novel_tweets_generator/prompts/' + f'{current_folders + 1}'
         os.makedirs(novel_tweets_generator_prompts_sub_folder, exist_ok=True)
-        lines = prompts.splitlines()
-        for i, line in enumerate(lines):
-            parts = line.split()
-            content = ' '.join(parts[1:])
-            filename = novel_tweets_generator_prompts_sub_folder + '/scene' + f'{i + 1}.txt'
-            with open(filename, 'w') as f:
-                f.write(content)
-        print("AI推文保存完成")
-        return gr.update(interactive=True)
+        if prompts is not None:
+            lines = prompts.splitlines()
+            for i, line in enumerate(lines):
+                parts = line.split()
+                content = ' '.join(parts[1:])
+                filename = novel_tweets_generator_prompts_sub_folder + '/scene' + f'{i + 1}.txt'
+                content = content.replace(': ', ':').lower()
+                with open(filename, 'w') as f:
+                    f.write(content)
+            print("AI推文保存完成，保存路径是:", f'{novel_tweets_generator_prompts_sub_folder}文件夹内')
+            return gr.update(interactive=True)
+        else:
+            print("AI推文翻译失败")
+            return gr.update(interactive=True)
     else:
         print("AI处理的推文为空，不做处理")
         return gr.update(interactive=True)
@@ -946,7 +1023,7 @@ def tts_baidu(aue, per, pit, spd, text, vol):
                 "lan": "zh",
                 "tex": text_encode,
                 "tok": access_token,
-                "cuid": mac_address,
+                "cuid": machine_code,
                 "ctp": 1,
                 "spd": spd,
                 "pit": pit,
@@ -1108,7 +1185,7 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
             "enable_notify": False
         },
         "context": {
-            "device_id": mac_address
+            "device_id": machine_code
         },
         "header": {
             "appkey": app_key,
@@ -1377,38 +1454,6 @@ def change_voice_role(tts_type, role):
             return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 
-def sign_up(code):
-    random_str1 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    random_str2 = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
-    random_str3 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    try:
-        email = f"{random_str1}@{random_str2}.com"
-        res = supabase.auth.sign_up({
-            "email": email,
-            "password": random_str3
-        })
-        res_dict = json.loads(res.json())
-        if res_dict["user"]:
-            user_id = res_dict["user"]["id"]
-            res = call_rpc_function(user_id, code, mac_address)
-            if res.data[0]['code'] == 0:
-                expire_time = chang_time_zone(res.data[0]['data']['expire_at'])
-                set_key(env_path, 'USER_ID', user_id)
-                set_key(env_path, 'ACTIVE_CODE', code)
-                set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
-                os.environ['CHATGPT_BASE_URL'] = res.data[0]['data']['env']['CHATGPT_BASE_URL']
-                os.environ['API_URL'] = res.data[0]['data']['env']['API_URL']
-            else:
-                print("激活异常:----->", res.data[0]['msg'])
-                return gr.update(visible=True), gr.update(value=f"激活异常，{res.data[0]['msg']}")
-            return gr.update(visible=False), gr.update(value='激活成功，请重启webui后生效')
-    except APIError as error:
-        return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息----->{}'.format(error))
-    except AuthApiError as err:
-        return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息----->{}'.format(err))
-    return gr.update(visible=True), gr.update(value='激活失败，请查看控制台信息，有疑问请联系开发者')
-
-
 class Script(scripts.Script):
 
     def title(self):
@@ -1420,7 +1465,7 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
         with gr.Accordion(label="注册和激活", open=True):
-            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，首次使用需要填写，激活后隐藏该行', visible=is_expired)
+            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后隐藏该行', visible=is_expired)
             ensure_sign_up = gr.Button(value='注册并激活', visible=is_expired)
             if is_expired:
                 active_info_text = '脚本未激活或者已过期，请激活！'
@@ -1566,7 +1611,7 @@ class Script(scripts.Script):
                                            outputs=[btn_txt_to_voice])
                 prompts_folder = gr.Textbox(
                     label="4. 输入包含提示词文本文件的文件夹路径",
-                    info="默认值为空时处理outputs/novel_tweets_generator/prompts文件夹下的所有文件夹",
+                    info="默认值为空时处理outputs/novel_tweets_generator/prompts文件夹下的最后一个文件夹",
                     lines=1,
                     max_lines=2,
                     value=""
