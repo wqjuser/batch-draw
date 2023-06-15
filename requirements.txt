@@ -5,5 +5,6 @@ aliyun-python-sdk-core
 azure-cognitiveservices-speech
 python-dotenv
 supabase
-psuti
+psutil
 WMI
+ntplib

@@ -38,6 +38,7 @@ import wave
 import azure.cognitiveservices.speech as speechsdk
 from supabase import create_client, Client
 from datetime import datetime, timedelta, timezone
+import ntplib
 
 
 def process_string_tag(tag):
@@ -64,10 +65,16 @@ def chang_time_zone(utc_time_str):
     return local_time_str
 
 
+def get_ntp_time():
+    ntp_client = ntplib.NTPClient()
+    response = ntp_client.request('pool.ntp.org')
+    return response.tx_time
+
+
 def compare_time(time_str):
     date_format = "%Y-%m-%d %H:%M:%S"
     timestamp = time.mktime(time.strptime(time_str, date_format))
-    now = time.time()
+    now = get_ntp_time()
     if timestamp > now:
         return False
     elif timestamp < now:
@@ -135,20 +142,6 @@ active_code = os.environ.get("ACTIVE_CODE")
 realtime = ''
 is_expired = True
 env_data = {}
-if userid != '' and active_code != '':
-    res_data = call_rpc_function(userid, active_code, machine_code)
-    try:
-        if res_data.data[0]['code'] == 0:
-            env_data = res_data.data[0]['data']['env']
-            env_expire_time = res_data.data[0]['data']['expire_at']
-            realtime = chang_time_zone(env_expire_time)
-            set_key(env_path, 'EXPIRE_AT', realtime)
-            os.environ['CHATGPT_BASE_URL'] = env_data['CHATGPT_BASE_URL']
-            os.environ['API_URL'] = env_data['API_URL']
-            is_expired = compare_time(realtime)
-            set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。')
-    except APIError as e:
-        print("获取环境配置失败，请重启webui")
 
 
 def sign_up(code):
@@ -170,6 +163,7 @@ def sign_up(code):
                 expire_time = chang_time_zone(res.data[0]['data']['expire_at'])
                 set_key(env_path, 'EXPIRE_AT', expire_time)
                 env_data = res.data[0]['data']['env']
+                env_data['EXPIRE_AT'] = expire_time
                 set_key(env_path, 'USER_ID', user_id)
                 set_key(env_path, 'ACTIVE_CODE', code)
                 set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
@@ -376,7 +370,29 @@ def translate(text_list, appid, key):
 
 
 if userid != '' and active_code != '':
-    get_and_deal_azure_speech_list()
+    res_data = call_rpc_function(userid, active_code, machine_code)
+    try:
+        if res_data.data[0]['code'] == 0:
+            env_data = res_data.data[0]['data']['env']
+            env_expire_time = res_data.data[0]['data']['expire_at']
+            realtime = chang_time_zone(env_expire_time)
+            set_key(env_path, 'EXPIRE_AT', realtime)
+            env_data['EXPIRE_AT'] = realtime
+            os.environ['CHATGPT_BASE_URL'] = env_data['CHATGPT_BASE_URL']
+            os.environ['API_URL'] = env_data['API_URL']
+            is_expired = compare_time(realtime)
+            info = f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。'
+            get_and_deal_azure_speech_list()
+            set_key(env_path, 'ACTIVE_INFO', info)
+        elif res_data.data[0]['code'] == 1:
+            is_expired = True
+            info = f'脚本已过期，请联系管理员'
+            set_key(env_path, 'ACTIVE_INFO', info)
+            print(info)
+        elif res_data.data[0]['code'] == 4:
+            print(res_data.data[0]['msg'])
+    except APIError as e:
+        print("获取环境配置失败，请重启webui")
 
 
 def get_last_subdir(path):
@@ -858,6 +874,9 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
 
 
 def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy):
+    if compare_time(env_data['EXPIRE_AT']):
+        print("脚本已到期")
+        return gr.update(value='脚本已到期'), gr.update(interactive=True)
     proxy = None
     default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
 你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述。
@@ -922,6 +941,9 @@ def deepl_translate_text(api_key, text, target_lang: str = 'EN-US'):
 
 
 def save_prompts(prompts, is_translate=False):
+    if compare_time(env_data['EXPIRE_AT']):
+        print("脚本已到期")
+        return gr.update(interactive=True)
     if prompts != "":
         print("开始处理并保存AI推文")
         appid = env_data['BAIDU_TRANSLATE_APPID']
@@ -965,6 +987,9 @@ def set_un_clickable():
 
 
 def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotion_intensity, role_play):
+    if compare_time(env_data['EXPIRE_AT']):
+        print("脚本已到期")
+        return gr.update(interactive=True)
     print("语音引擎类型是:", tts_type)
     if tts_type == "百度":
         tts_baidu(aue, per, pit, spd, text, vol)
@@ -1465,8 +1490,12 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
         with gr.Accordion(label="注册和激活", open=True):
-            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后隐藏该行', visible=is_expired)
-            ensure_sign_up = gr.Button(value='注册并激活', visible=is_expired)
+            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏', visible=is_expired)
+            if userid != '' and active_code != '':
+                value = '重新激活'
+            else:
+                value = '注册并激活'
+            ensure_sign_up = gr.Button(value=value, visible=is_expired)
             if is_expired:
                 active_info_text = '脚本未激活或者已过期，请激活！'
             else:
