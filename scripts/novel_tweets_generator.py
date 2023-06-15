@@ -67,7 +67,7 @@ def chang_time_zone(utc_time_str):
 
 def get_ntp_time():
     ntp_client = ntplib.NTPClient()
-    response = ntp_client.request('cn.pool.ntp.org')
+    response = ntp_client.request('pool.ntp.org')
     return response.tx_time
 
 
