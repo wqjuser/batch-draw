@@ -67,7 +67,7 @@ def chang_time_zone(utc_time_str):
 
 def get_ntp_time():
     ntp_client = ntplib.NTPClient()
-    response = ntp_client.request('pool.ntp.org')
+    response = ntp_client.request('cn.pool.ntp.org')
     return response.tx_time
 
 
@@ -397,7 +397,7 @@ if userid != '' and active_code != '':
 
 def get_last_subdir(path):
     # 获取目录下的所有子目录并按顺序排序
-    sub_dirs = sorted([d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))])
+    sub_dirs = natsorted([d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))])
 
     # 如果存在子目录，返回最后一个子目录的完整路径，否则返回None
     return os.path.join(path, sub_dirs[-1]) if sub_dirs else None
@@ -406,7 +406,7 @@ def get_last_subdir(path):
 # All the image processing is done in this method
 def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_path, text_watermark, text_watermark_color,
             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
-            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h):
+            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h, lora_name):
     if prompts_folder == "":
         folder_prefix = os.getcwd() + "/" if sys.platform != 'win32' else os.getcwd() + "\\"
         prompts_folder = folder_prefix + novel_tweets_generator_prompts_folder
@@ -434,7 +434,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
             processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, prompts_folder,
                                                                             default_prompt_type, need_default_prompt,
                                                                             need_negative_prompt, need_combine_prompt,
-                                                                            combine_prompt_type, cb_h)
+                                                                            combine_prompt_type, cb_h, lora_name)
         frames.append(frames_num)
         filenames.append(os.path.basename(prompts_folder))
         images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -455,7 +455,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                     processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, folder_path,
                                                                                     default_prompt_type, need_default_prompt,
                                                                                     need_negative_prompt, need_combine_prompt,
-                                                                                    combine_prompt_type, cb_h)
+                                                                                    combine_prompt_type, cb_h, lora_name)
                 frames.append(frames_num)
                 filenames.append(os.path.basename(folder_path))
                 images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -518,7 +518,7 @@ def get_prompts(default_prompt_dict, prompt_keys):
 
 
 def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_prompt_type, need_default_prompt, need_negative_prompt,
-                           need_combine_prompt, combine_prompt_type, cb_h):
+                           need_combine_prompt, combine_prompt_type, cb_h, lora_name):
     cps = []
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
     prompt_files = natsorted(
@@ -534,7 +534,10 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
 
     default_prompt_dict = {
         "1.基本提示(通用)": ps.default_prompts,
-        "2.基本提示(通用修手)": ps.default_prompts_fix_hands
+        "2.基本提示(通用修手)": ps.default_prompts_fix_hands,
+        "3.基本提示(增加细节1)": ps.default_prompts_add_details_1,
+        "4.基本提示(增加细节2)": ps.default_prompts_add_details_2,
+        "5.基本提示(梦幻童话)": ps.default_prompts_fairy_tale
     }
 
     if not need_default_prompt and default_prompt_type in default_prompt_dict:
@@ -595,7 +598,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                 file_encoding = result['encoding']
             with open(prompt_file, "r", encoding=file_encoding) as f:
                 individual_prompt = f.read().strip()
-            copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}"
+            copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}, {lora_name}"
             file_idx += 1
         copy_p.seed = int(random.randrange(4294967294))
         if cb_h:
@@ -901,7 +904,8 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
     if api_cb:
         try:
             openai_key = env_data['KEY']
-            chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None)
+            chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None, engine='gpt-3.5-turbo-0613',
+                                temperature=0.8)
             response = chatbot.ask(prompt=prompt)
         except Exception as error:
             print(f"Error: {error}")
@@ -945,6 +949,7 @@ def save_prompts(prompts, is_translate=False):
         print("脚本已到期")
         return gr.update(interactive=True)
     if prompts != "":
+        prompts = re.sub(r'\n\s*\n', '\n', prompts)
         print("开始处理并保存AI推文")
         appid = env_data['BAIDU_TRANSLATE_APPID']
         key = env_data['BAIDU_TRANSLATE_KEY']
@@ -1505,9 +1510,10 @@ class Script(scripts.Script):
             refresh_active_info = gr.Button(value='刷新激活信息')
 
             def update_active_info():
-                return gr.update(value=active_info_text)
+                expired = compare_time(env_data['EXPIRE_AT'])
+                return gr.update(value=active_info_text), gr.update(visible=expired), gr.update(visible=expired, value='重新激活')
 
-            refresh_active_info.click(update_active_info, outputs=[active_info])
+            refresh_active_info.click(update_active_info, outputs=[active_info, active_code_input, ensure_sign_up])
             ensure_sign_up.click(sign_up, inputs=[active_code_input], outputs=[active_info])
         with gr.Accordion(label="基础属性，必填项，每一项都不能为空", open=True):
             with gr.Column(variant='panel'):
@@ -1515,14 +1521,16 @@ class Script(scripts.Script):
                     default_prompt_type = gr.Dropdown(
                         [
                             "1.基本提示(通用)",
-                            "2.基本提示(通用修手)"
+                            "2.基本提示(通用修手)",
+                            "3.基本提示(增加细节1)",
+                            "4.基本提示(增加细节2)",
+                            "5.基本提示(梦幻童话)"
                         ],
                         label="默认正面提示词类别",
                         value="1.基本提示(通用)")
-                    need_combine_prompt = gr.Checkbox(label="需要组合技(组合上方类别)？", value=False, visible=False)
+                    need_combine_prompt = gr.Checkbox(label="需要组合技(组合上方类别)？", value=False)
                     combine_prompt_type = gr.Textbox(
-                        label="请输入你需要组合的类别组合，例如2+3+4，不要组合过多种类",
-                        visible=False)
+                        label="请输入你需要组合的类别组合，例如2+3，不要组合过多种类", visible=False)
 
                     def is_show_combine(is_show):
                         return gr.update(visible=is_show)
@@ -1554,6 +1562,10 @@ class Script(scripts.Script):
 
                     need_mix_models.change(is_need_mix_models, inputs=[need_mix_models],
                                            outputs=[models_txt])
+                    lora_name = gr.Textbox(label="使用Lora", lines=1, max_lines=2, value="",
+                                           placeholder='由于二次元的Lora众多，风格各异，小说的类型也很多，所有脚本并没有内置Lora，想要出现更好的效果可以在此输入Lora，'
+                                                       '格式是<lora:lora的名字:lora的权重>,支持多个lora，例如 <lora:fashionGirl_v54:0.5>, '
+                                                       '<lora:cuteGirlMix4_v10:0.6>')
                 max_frames = gr.Number(
                     label="2. 输入指定的测试图片数量 (运行到指定数量后停止(不会大于所有文本的总数)，用于用户测试生成图片的效果，最小1帧,测试完成后请输入一个很大的数保证能把所有文本操作完毕)",
                     value=666,
@@ -1662,7 +1674,7 @@ class Script(scripts.Script):
             with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
                 with gr.Column(variant='panel'):
                     with gr.Column():
-                        text_watermark = gr.Checkbox(label="5. 添加文字水印", info="自定义文字水印")
+                        text_watermark = gr.Checkbox(label="6. 添加文字水印", info="自定义文字水印")
                         with gr.Row():
                             with gr.Column(scale=8):
                                 with gr.Row():
@@ -1702,7 +1714,7 @@ class Script(scripts.Script):
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
                 ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol,
-                audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity]
+                audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name]
 
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
             text_watermark, text_watermark_font, text_watermark_target,
@@ -1710,7 +1722,7 @@ class Script(scripts.Script):
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
             original_article, ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition, btn_txt_to_voice,
-            output_type, voice_emotion, voice_emotion_intensity):
+            output_type, voice_emotion, voice_emotion_intensity, lora_name):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
@@ -1720,6 +1732,6 @@ class Script(scripts.Script):
         processed = process(p, prompt_txt, prompts_folder, int(max_frames), custom_font, text_font_path, text_watermark, text_watermark_color,
                             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
                             default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
-                            cb_h)
+                            cb_h, lora_name)
 
         return processed

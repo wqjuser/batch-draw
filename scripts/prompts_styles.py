@@ -34,6 +34,12 @@ default_prompts = "(8k, best quality, masterpiece:1.2), finely detail, official 
 
 default_prompts_fix_hands = default_prompts + "<lyco:GoodHands-beta2:1>, "
 
+default_prompts_add_details_1 = default_prompts + "<lora:add_detail:1>, "
+
+default_prompts_add_details_2 = default_prompts + "<lora:more_details:1>, "
+
+default_prompts_fairy_tale = default_prompts + "animie, delicate scene, <lora:FairyTaleV20_SD1.5:0.7>, "
+
 default_prompts_for_girl = "(8k, best quality, masterpiece:1.2), (realistic, photo-realistic:1.37), unity, an extremely delicate and beautiful, " \
                            "amazing, finely detail, official art, incredibly absurdres, huge filesize, ultra-detailed, highres, extremely detailed," \
                            " beautiful detailed girl, extremely detailed eyes and face, beautiful detailed eyes, light on face, Kpop idol, mix4, " \
