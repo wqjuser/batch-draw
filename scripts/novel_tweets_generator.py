@@ -426,13 +426,16 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
     count = 0
     for root, dirs, files in os.walk(prompts_folder):
         for file in files:
-            count += 1
+            if not file.startswith('.'):
+                count += 1
 
     frames = []
     results = []
     processed_list = []
     if prompts_folders == 0:
-        file_count = len(os.listdir(prompts_folder))
+        files_and_dirs = os.listdir(prompts_folder)
+        filtered_files_and_dirs = [f for f in files_and_dirs if not f.startswith('.')]
+        file_count = len(filtered_files_and_dirs)
         state.job_count = min(int(file_count * p.n_iter), max_frames * 1)
         filenames = []
         result = dura, first_processed, original_images, processed_images, \
@@ -453,6 +456,8 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
     else:
         state.job_count = min(int(count * p.n_iter), max_frames * prompts_folders)
         for file_name in os.listdir(prompts_folder):
+            if file_name.startswith('.'):
+                continue
             folder_path = os.path.join(prompts_folder, file_name)
             if os.path.isdir(folder_path):
                 filenames = []
