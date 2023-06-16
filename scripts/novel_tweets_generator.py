@@ -428,6 +428,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
     prompts_folders = count_subdirectories(prompts_folder)
     count = 0
     for root, dirs, files in os.walk(prompts_folder):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
         for file in files:
             if not file.startswith('.'):
                 count += 1
