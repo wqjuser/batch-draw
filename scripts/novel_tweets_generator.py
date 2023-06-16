@@ -406,7 +406,7 @@ def get_last_subdir(path):
 # All the image processing is done in this method
 def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_path, text_watermark, text_watermark_color,
             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
-            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h, lora_name):
+            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h, cb_w, lora_name):
     if prompts_folder == "":
         folder_prefix = os.getcwd() + "/" if sys.platform != 'win32' else os.getcwd() + "\\"
         prompts_folder = folder_prefix + novel_tweets_generator_prompts_folder
@@ -434,7 +434,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
             processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, prompts_folder,
                                                                             default_prompt_type, need_default_prompt,
                                                                             need_negative_prompt, need_combine_prompt,
-                                                                            combine_prompt_type, cb_h, lora_name)
+                                                                            combine_prompt_type, cb_h, cb_w, lora_name)
         frames.append(frames_num)
         filenames.append(os.path.basename(prompts_folder))
         images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -455,7 +455,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                     processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, folder_path,
                                                                                     default_prompt_type, need_default_prompt,
                                                                                     need_negative_prompt, need_combine_prompt,
-                                                                                    combine_prompt_type, cb_h, lora_name)
+                                                                                    combine_prompt_type, cb_h, cb_w, lora_name)
                 frames.append(frames_num)
                 filenames.append(os.path.basename(folder_path))
                 images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -518,7 +518,7 @@ def get_prompts(default_prompt_dict, prompt_keys):
 
 
 def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_prompt_type, need_default_prompt, need_negative_prompt,
-                           need_combine_prompt, combine_prompt_type, cb_h, lora_name):
+                           need_combine_prompt, combine_prompt_type, cb_h, cb_w, lora_name):
     cps = []
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
     prompt_files = natsorted(
@@ -604,7 +604,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
         if cb_h:
             copy_p.width = 576
             copy_p.height = 1024
-        else:
+        elif cb_w:
             copy_p.width = 1024
             copy_p.height = 576
         processed = process_images(copy_p)
@@ -985,6 +985,13 @@ def change_state(is_checked):
         return gr.update(value=False)
     else:
         return gr.update(value=True)
+
+
+def change_selected(is_checked):
+    if is_checked:
+        return gr.update(value=False), gr.update(value=False)
+    else:
+        return gr.update(value=True), gr.update(value=False)
 
 
 def set_un_clickable():
@@ -1661,8 +1668,10 @@ class Script(scripts.Script):
                 with gr.Row():
                     cb_h = gr.Checkbox(label='竖图', value=True, info="尺寸为576*1024，即9:16的比例")
                     cb_w = gr.Checkbox(label='横图', info="尺寸为1024*576，即16:9的比例")
-                    cb_h.change(change_state, inputs=[cb_h], outputs=[cb_w])
-                    cb_w.change(change_state, inputs=[cb_w], outputs=[cb_h])
+                    cb_custom = gr.Checkbox(label='自定义尺寸', info="勾选后请在sd的图片尺寸位置自行输入尺寸")
+                    cb_h.select(change_selected, inputs=[cb_h], outputs=[cb_w, cb_custom])
+                    cb_w.select(change_selected, inputs=[cb_w], outputs=[cb_h, cb_custom])
+                    cb_custom.select(change_selected, inputs=[cb_custom], outputs=[cb_h, cb_w])
                 gr.HTML("")
 
             with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True, visible=False):
@@ -1713,16 +1722,16 @@ class Script(scripts.Script):
                 text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path,
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
                 ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
-                tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol,
-                audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name]
+                tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
+                voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name]
 
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
             text_watermark, text_watermark_font, text_watermark_target,
             text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path, default_prompt_type,
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
             original_article, ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
-            cb_use_proxy, cb_trans_prompt, cb_w, cb_h, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition, btn_txt_to_voice,
-            output_type, voice_emotion, voice_emotion_intensity, lora_name):
+            cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition,
+            btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
@@ -1732,6 +1741,6 @@ class Script(scripts.Script):
         processed = process(p, prompt_txt, prompts_folder, int(max_frames), custom_font, text_font_path, text_watermark, text_watermark_color,
                             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
                             default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
-                            cb_h, lora_name)
+                            cb_h, cb_w, lora_name)
 
         return processed
