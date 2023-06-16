@@ -338,6 +338,10 @@ def run(command, desc=None, errdesc=None, custom_env=None):
 def count_subdirectories(path):
     count = 0
     for item in os.listdir(path):
+        # 跳过以'.'开头的子目录
+        if item.startswith('.'):
+            continue
+
         item_path = os.path.join(path, item)
         if os.path.isdir(item_path):
             count += 1
@@ -401,9 +405,8 @@ refresh_active_data()
 
 
 def get_last_subdir(path):
-    # 获取目录下的所有子目录并按顺序排序
-    sub_dirs = natsorted([d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))])
-
+    # 获取目录下的所有子目录（不包括以'.'开头的子目录）并按顺序排序
+    sub_dirs = natsorted([d for d in os.listdir(path) if not d.startswith('.') and os.path.isdir(os.path.join(path, d))])
     # 如果存在子目录，返回最后一个子目录的完整路径，否则返回None
     return os.path.join(path, sub_dirs[-1]) if sub_dirs else None
 
