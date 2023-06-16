@@ -165,7 +165,7 @@ def sign_up(code):
                 env_data = res.data[0]['data']['env']
                 env_data['EXPIRE_AT'] = expire_time
                 set_key(env_path, 'USER_ID', user_id)
-                set_key(env_path, 'ACTIVE_CODE', code)
+                set_key(env_path, 'ACTIVE_CODE', res.data[0]['data']['active_code'])
                 set_key(env_path, 'ACTIVE_INFO', f'脚本已激活，到期时间是:{expire_time}，在此期间祝你玩的愉快。')
                 os.environ['CHATGPT_BASE_URL'] = res.data[0]['data']['env']['CHATGPT_BASE_URL']
                 os.environ['API_URL'] = res.data[0]['data']['env']['API_URL']
@@ -199,9 +199,7 @@ def get_and_deal_azure_speech_list():
         for i, speech in enumerate(speech_list):
             if 'Chinese' in speech['LocaleName']:
                 chinese_speech_list.append(speech)
-        if voice_number == len(chinese_speech_list):
-            print('微软语音配置未改变，无需写入')
-        else:
+        if voice_number != len(chinese_speech_list):
             vop.azure['emotion_category'] = {}
             vop.azure['voice_number'] = len(chinese_speech_list)
             vop.azure['voice_role'] = []
@@ -369,30 +367,37 @@ def translate(text_list, appid, key):
     return result
 
 
-if userid != '' and active_code != '':
-    res_data = call_rpc_function(userid, active_code, machine_code)
-    try:
-        if res_data.data[0]['code'] == 0:
-            env_data = res_data.data[0]['data']['env']
-            env_expire_time = res_data.data[0]['data']['expire_at']
-            realtime = chang_time_zone(env_expire_time)
-            set_key(env_path, 'EXPIRE_AT', realtime)
-            env_data['EXPIRE_AT'] = realtime
-            os.environ['CHATGPT_BASE_URL'] = env_data['CHATGPT_BASE_URL']
-            os.environ['API_URL'] = env_data['API_URL']
-            is_expired = compare_time(realtime)
-            info = f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。'
-            get_and_deal_azure_speech_list()
-            set_key(env_path, 'ACTIVE_INFO', info)
-        elif res_data.data[0]['code'] == 1:
-            is_expired = True
-            info = f'脚本已过期，请联系管理员'
-            set_key(env_path, 'ACTIVE_INFO', info)
-            print(info)
-        elif res_data.data[0]['code'] == 4:
-            print(res_data.data[0]['msg'])
-    except APIError as e:
-        print("获取环境配置失败，请重启webui")
+def refresh_active_data():
+    global env_data, realtime, is_expired
+    if userid != '':
+        res_data = call_rpc_function(userid, active_code, machine_code)
+        try:
+            if res_data.data[0]['code'] == 0:
+                env_data = res_data.data[0]['data']['env']
+                set_key(env_path, 'ACTIVE_CODE', res_data.data[0]['data']['active_code'])
+                env_expire_time = res_data.data[0]['data']['expire_at']
+                realtime = chang_time_zone(env_expire_time)
+                set_key(env_path, 'EXPIRE_AT', realtime)
+                env_data['EXPIRE_AT'] = realtime
+                os.environ['CHATGPT_BASE_URL'] = env_data['CHATGPT_BASE_URL']
+                os.environ['API_URL'] = env_data['API_URL']
+                is_expired = compare_time(realtime)
+                info = f'脚本已激活，到期时间是:{realtime}，在此期间祝你玩的愉快。'
+                get_and_deal_azure_speech_list()
+                set_key(env_path, 'ACTIVE_INFO', info)
+            elif res_data.data[0]['code'] == 1:
+                is_expired = True
+                info = f'脚本已过期，请联系管理员'
+                set_key(env_path, 'ACTIVE_INFO', info)
+                print(info)
+            elif res_data.data[0]['code'] == 4:
+                print(res_data.data[0]['msg'])
+        except APIError as e:
+            print("获取环境配置失败，请重启webui")
+        load_dotenv(dotenv_path=env_path, override=True)
+
+
+refresh_active_data()
 
 
 def get_last_subdir(path):
@@ -1502,7 +1507,8 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
         with gr.Accordion(label="注册和激活", open=True):
-            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏', visible=is_expired)
+            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏，首次留空激活会给一小时的免费试用',
+                                           visible=is_expired)
             if userid != '' and active_code != '':
                 value = '重新激活'
             else:
@@ -1517,8 +1523,13 @@ class Script(scripts.Script):
             refresh_active_info = gr.Button(value='刷新激活信息')
 
             def update_active_info():
+                refresh_active_data()
                 expired = compare_time(env_data['EXPIRE_AT'])
-                return gr.update(value=active_info_text), gr.update(visible=expired), gr.update(visible=expired, value='重新激活')
+                if expired:
+                    refresh_active_info_text = '脚本未激活或者已过期，请激活！'
+                else:
+                    refresh_active_info_text = os.environ.get('ACTIVE_INFO')
+                return gr.update(value=refresh_active_info_text), gr.update(visible=expired), gr.update(visible=expired, value='重新激活')
 
             refresh_active_info.click(update_active_info, outputs=[active_info, active_code_input, ensure_sign_up])
             ensure_sign_up.click(sign_up, inputs=[active_code_input], outputs=[active_info])
