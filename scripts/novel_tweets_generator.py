@@ -531,8 +531,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                            need_combine_prompt, combine_prompt_type, cb_h, cb_w, lora_name):
     cps = []
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
-    prompt_files = natsorted(
-        [f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f))])
+    prompt_files = natsorted([f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f)) and not f.startswith('.')])
 
     original_images = []
     processed_images = []
