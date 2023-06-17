@@ -65,16 +65,21 @@ def chang_time_zone(utc_time_str):
     return local_time_str
 
 
-def get_ntp_time():
+def get_time_now():
     ntp_client = ntplib.NTPClient()
-    response = ntp_client.request('pool.ntp.org')
-    return response.tx_time
+    local_time = time.time()
+    try:
+        response = ntp_client.request('pool.ntp.org')
+        return response.tx_time
+    except Exception as e:
+        print(f"Error: {e}")
+        return local_time
 
 
 def compare_time(time_str):
     date_format = "%Y-%m-%d %H:%M:%S"
     timestamp = time.mktime(time.strptime(time_str, date_format))
-    now = get_ntp_time()
+    now = get_time_now()
     if timestamp > now:
         return False
     elif timestamp < now:
@@ -449,13 +454,13 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                                                                             combine_prompt_type, cb_h, cb_w, lora_name)
         frames.append(frames_num)
         filenames.append(os.path.basename(prompts_folder))
-        # images_post_processing(custom_font, filenames, frames, original_images, cp,
-        #                        first_processed, processed_images,
-        #                        processed_images2, save_or, text_font_path, text_watermark,
-        #                        text_watermark_color,
-        #                        text_watermark_content, text_watermark_font, text_watermark_pos,
-        #                        text_watermark_size,
-        #                        text_watermark_target, cps)
+        images_post_processing(custom_font, filenames, frames, original_images, cp,
+                               first_processed, processed_images,
+                               processed_images2, save_or, text_font_path, text_watermark,
+                               text_watermark_color,
+                               text_watermark_content, text_watermark_font, text_watermark_pos,
+                               text_watermark_size,
+                               text_watermark_target, cps)
         results.append(result)
     else:
         state.job_count = min(int(count * p.n_iter), max_frames * prompts_folders)
@@ -472,13 +477,13 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                                                                                     combine_prompt_type, cb_h, cb_w, lora_name)
                 frames.append(frames_num)
                 filenames.append(os.path.basename(folder_path))
-                # images_post_processing(custom_font, filenames, frames, original_images, cp,
-                #                        first_processed, processed_images,
-                #                        processed_images2, save_or, text_font_path, text_watermark,
-                #                        text_watermark_color,
-                #                        text_watermark_content, text_watermark_font, text_watermark_pos,
-                #                        text_watermark_size,
-                #                        text_watermark_target, cps)
+                images_post_processing(custom_font, filenames, frames, original_images, cp,
+                                       first_processed, processed_images,
+                                       processed_images2, save_or, text_font_path, text_watermark,
+                                       text_watermark_color,
+                                       text_watermark_content, text_watermark_font, text_watermark_pos,
+                                       text_watermark_size,
+                                       text_watermark_target, cps)
                 results.append(result)
 
     for result in results:
