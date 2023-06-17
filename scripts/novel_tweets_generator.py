@@ -155,12 +155,15 @@ def sign_up(code):
     random_str2 = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
     random_str3 = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     try:
-        email = f"{random_str1}@{random_str2}.com"
-        res = supabase.auth.sign_up({
-            "email": email,
-            "password": random_str3
-        })
-        res_dict = json.loads(res.json())
+        if os.environ.get('USER_ID') == '':
+            email = f"{random_str1}@{random_str2}.com"
+            res = supabase.auth.sign_up({
+                "email": email,
+                "password": random_str3
+            })
+            res_dict = json.loads(res.json())
+        else:
+            res_dict = {'user': {'id': os.environ.get('USER_ID')}}
         if res_dict["user"]:
             user_id = res_dict["user"]["id"]
             res = call_rpc_function(user_id, code, machine_code)
