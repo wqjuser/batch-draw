@@ -422,7 +422,9 @@ def get_last_subdir(path):
 # All the image processing is done in this method
 def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_path, text_watermark, text_watermark_color,
             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
-            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h, cb_w, lora_name):
+            default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, cb_h, cb_w,
+            lora_name, batch_images):
+    p.n_iter = batch_images
     if prompts_folder == "":
         folder_prefix = os.getcwd() + "/" if sys.platform != 'win32' else os.getcwd() + "\\"
         prompts_folder = folder_prefix + novel_tweets_generator_prompts_folder
@@ -454,7 +456,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
             processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, prompts_folder,
                                                                             default_prompt_type, need_default_prompt,
                                                                             need_negative_prompt, need_combine_prompt,
-                                                                            combine_prompt_type, cb_h, cb_w, lora_name)
+                                                                            combine_prompt_type, cb_h, cb_w, lora_name, batch_images)
         frames.append(frames_num)
         filenames.append(os.path.basename(prompts_folder))
         images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -463,7 +465,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                                text_watermark_color,
                                text_watermark_content, text_watermark_font, text_watermark_pos,
                                text_watermark_size,
-                               text_watermark_target, cps)
+                               text_watermark_target, cps, batch_images)
         results.append(result)
     else:
         state.job_count = min(int(count * p.n_iter), max_frames * prompts_folders)
@@ -477,7 +479,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                     processed_images2, frames_num, cp, cps = deal_with_single_image(max_frames, p, prompt_txt, folder_path,
                                                                                     default_prompt_type, need_default_prompt,
                                                                                     need_negative_prompt, need_combine_prompt,
-                                                                                    combine_prompt_type, cb_h, cb_w, lora_name)
+                                                                                    combine_prompt_type, cb_h, cb_w, lora_name, batch_images)
                 frames.append(frames_num)
                 filenames.append(os.path.basename(folder_path))
                 images_post_processing(custom_font, filenames, frames, original_images, cp,
@@ -486,7 +488,7 @@ def process(p, prompt_txt, prompts_folder, max_frames, custom_font, text_font_pa
                                        text_watermark_color,
                                        text_watermark_content, text_watermark_font, text_watermark_pos,
                                        text_watermark_size,
-                                       text_watermark_target, cps)
+                                       text_watermark_target, cps, batch_images)
                 results.append(result)
 
     for result in results:
@@ -540,11 +542,11 @@ def get_prompts(default_prompt_dict, prompt_keys):
 
 
 def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_prompt_type, need_default_prompt, need_negative_prompt,
-                           need_combine_prompt, combine_prompt_type, cb_h, cb_w, lora_name):
+                           need_combine_prompt, combine_prompt_type, cb_h, cb_w, lora_name, batch_images):
     cps = []
     assert os.path.isdir(prompts_folder), f"关键词文件夹-> '{prompts_folder}' 不存在或不是文件夹."
     prompt_files = natsorted([f for f in os.listdir(prompts_folder) if os.path.isfile(os.path.join(prompts_folder, f)) and not f.startswith('.')])
-
+    p.n_iter = batch_images
     original_images = []
     processed_images = []
     processed_images2 = []
@@ -619,17 +621,19 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                 file_encoding = result['encoding']
             with open(prompt_file, "r", encoding=file_encoding) as f:
                 individual_prompt = f.read().strip()
-            copy_p.prompt = f"{individual_prompt}, {copy_p.prompt}, {lora_name}"
+            copy_p.prompt = f"{copy_p.prompt}, {individual_prompt}, {lora_name}"
             file_idx += 1
-        copy_p.seed = int(random.randrange(4294967294))
+        # copy_p.seed = int(random.randrange(4294967294))
         if cb_h:
             copy_p.width = 576
             copy_p.height = 1024
         elif cb_w:
             copy_p.width = 1024
             copy_p.height = 576
-        processed = process_images(copy_p)
-        cps.append(processed)
+        for k in range(batch_images):
+            copy_p.seed = int(random.randrange(4294967294))
+            processed = process_images(copy_p)
+            cps.append(processed)
         frame_count += 1
     for j in range(len(cps)):
         for i, img1 in enumerate(cps[j].images):
@@ -667,7 +671,7 @@ def add_background_image(foreground_path, background_path, p, processed, filenam
 def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images, or_images,
                   text_watermark_color, text_watermark_content, text_watermark_pos, text_watermark_target,
                   text_watermark_size, text_watermark_font, custom_font, text_font_path, p, processed, filenames,
-                  frames, cps):
+                  frames, cps, batch_images):
     text_font = 'msyh.ttc'
     if not custom_font:
         if text_watermark_font == '微软雅黑':
@@ -768,6 +772,7 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
             watermarked_image.save(watermarked_path)
             img1 = Image.open(watermarked_path)
             watered_images.append(img1)
+
         if int(text_watermark_target) == 2:
             for i, img in enumerate(pictures_list2[j]):
                 x = 0
@@ -849,18 +854,25 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
                            text_watermark_color,
                            text_watermark_content, text_watermark_font, text_watermark_pos,
                            text_watermark_size,
-                           text_watermark_target, cps):
+                           text_watermark_target, cps, batch_images):
     processed_images_flattened = []
     # here starts the custom image saving logic
     if save_or:
+        scene_idx = 0
+        counter = 0
         for i, filename in enumerate(filenames):
             for j, img in enumerate(original_images[i]):
-                images_dir = f"{novel_tweets_generator_images_folder}/{formatted_date}/{filename}/original_images"
+                # 当计数器达到batch_images时，更新场景索引并重置计数器
+                if counter == batch_images:
+                    scene_idx += 1
+                    counter = 0
+                images_dir = f"{novel_tweets_generator_images_folder}/{formatted_date}/{filename}/original_images/scene{scene_idx + 1}"
                 if not os.path.exists(images_dir):
                     os.makedirs(images_dir)
                 images.save_image(img, images_dir, "",
                                   prompt=cps[j].prompt, seed=cps[j].seed, grid=False, p=p,
                                   save_to_dirs=False, info=cps[j].info)
+                counter += 1
         # here is the original picture show
         for row in original_images:
             processed_images_flattened += row
@@ -880,12 +892,13 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
     need_add_watermark_images = []
     need_add_watermark_images1 = []
     new_images = []
+    print("原始图片数量是:", len(or_images))
     # Operation after adding a text watermark
     if text_watermark:
         watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
                                            or_images, text_watermark_color, text_watermark_content, text_watermark_pos,
                                            text_watermark_target, text_watermark_size, text_watermark_font, custom_font,
-                                           text_font_path, p, processed, filenames, frames, cps)
+                                           text_font_path, p, processed, filenames, frames, cps, batch_images)
         # After adding the watermark, only the final image will be displayed
         processed_images_flattened = []
         for row in watermarked_images:
@@ -1691,7 +1704,12 @@ class Script(scripts.Script):
                     max_lines=2,
                     value=""
                 )
-                gr.HTML("5. 生成图片类型")
+                batch_images = gr.Number(
+                    label="5. 每个画面生成图片的数量",
+                    value=1,
+                    min=1
+                )
+                gr.HTML("6. 生成图片类型")
                 with gr.Row():
                     cb_h = gr.Checkbox(label='竖图', value=True, info="尺寸为576*1024，即9:16的比例")
                     cb_w = gr.Checkbox(label='横图', info="尺寸为1024*576，即16:9的比例")
@@ -1710,7 +1728,7 @@ class Script(scripts.Script):
             with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
                 with gr.Column(variant='panel'):
                     with gr.Column():
-                        text_watermark = gr.Checkbox(label="6. 添加文字水印", info="自定义文字水印")
+                        text_watermark = gr.Checkbox(label="7. 添加文字水印", info="自定义文字水印")
                         with gr.Row():
                             with gr.Column(scale=8):
                                 with gr.Row():
@@ -1750,7 +1768,7 @@ class Script(scripts.Script):
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
                 ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
-                voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name]
+                voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images]
 
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
             text_watermark, text_watermark_font, text_watermark_target,
@@ -1758,16 +1776,16 @@ class Script(scripts.Script):
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
             original_article, ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition,
-            btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name):
+            btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
 
         p.batch_size = 1
-        p.n_iter = 1
+        # p.n_iter = 1
         processed = process(p, prompt_txt, prompts_folder, int(max_frames), custom_font, text_font_path, text_watermark, text_watermark_color,
                             text_watermark_content, text_watermark_font, text_watermark_pos, text_watermark_size, text_watermark_target, save_or,
                             default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
-                            cb_h, cb_w, lora_name)
+                            cb_h, cb_w, lora_name, int(batch_images))
 
         return processed
