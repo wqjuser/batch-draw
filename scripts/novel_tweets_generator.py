@@ -647,7 +647,7 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
     if len(cps) > 1:
         copy_cp.insert(0, process_images(p))
         final_processed = merge_processed_objects(copy_cp)
-    return 0, final_processed, original_images, processed_images, processed_images2, frame_count, copy_p, cps
+    return 0, final_processed, original_images, processed_images, processed_images2, frame_count * p.n_iter, copy_p, cps
 
 
 # Add a user-specified background image to the image
@@ -672,6 +672,7 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
                   text_watermark_color, text_watermark_content, text_watermark_pos, text_watermark_target,
                   text_watermark_size, text_watermark_font, custom_font, text_font_path, p, processed, filenames,
                   frames, cps, batch_images):
+    print("帧数是:", frames)
     text_font = 'msyh.ttc'
     if not custom_font:
         if text_watermark_font == '微软雅黑':
@@ -721,8 +722,11 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
             end = start + frame
             pictures_list1.append(need_add_watermark_images[start:end])
             start = end
-
     for j, filename in enumerate(filenames):
+        # 初始化计数器和场景索引
+        counter = 0
+        scene_idx = 0
+        print('处理的图片数量是:', len(pictures_list1[j]))
         for i, img in enumerate(pictures_list1[j]):
             if int(text_watermark_target) == 0:
                 text_overlay_image = Image.new('RGBA', img.size, (0, 0, 0, 0))
@@ -768,11 +772,22 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
             else:
                 watermarked_image = Image.alpha_composite(bg.convert('RGBA'), text_overlay_image)
                 original_dir, original_filename = os.path.split(img[0])
-            watermarked_path = os.path.join(original_dir, f"{original_filename}")
+            # 当计数器达到batch_images时，更新场景索引并重置计数器
+            if counter == batch_images:
+                scene_idx += 1
+                counter = 0
+            # 根据场景索引创建文件夹
+            images_dir = f"{novel_tweets_generator_images_folder}/{formatted_date}/{filename}/watermarked_images/scene{scene_idx + 1}"
+            if not os.path.exists(images_dir):
+                os.makedirs(images_dir)
+            watermarked_path = os.path.join(images_dir, f"{original_filename}")
             watermarked_image.save(watermarked_path)
             img1 = Image.open(watermarked_path)
             watered_images.append(img1)
-
+            counter += 1
+        # 重置计数器和场景索引
+        counter = 0
+        scene_idx = 0
         if int(text_watermark_target) == 2:
             for i, img in enumerate(pictures_list2[j]):
                 x = 0
@@ -807,7 +822,15 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
                 draw.text((x, y), text_watermark_content, font=font, fill=fill)
                 watermarked_image = Image.alpha_composite(original_image, transparent_layer)
                 original_filename = original_filename.replace("tmp-", "")
-                watermarked_path = os.path.join(original_dir, f"{original_filename}")
+                # 当计数器达到batch_images时，更新场景索引并重置计数器
+                if counter == batch_images:
+                    scene_idx += 1
+                    counter = 0
+                # 根据场景索引创建文件夹
+                images_dir = f"{novel_tweets_generator_images_folder}/{formatted_date}/{filename}/watermarked_images/scene{scene_idx + 1}"
+                if not os.path.exists(images_dir):
+                    os.makedirs(images_dir)
+                watermarked_path = os.path.join(images_dir, f"{original_filename}")
                 watermarked_image.save(watermarked_path)
                 img1 = Image.open(watermarked_path)
                 watered_images.append(img1)
@@ -892,7 +915,6 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
     need_add_watermark_images = []
     need_add_watermark_images1 = []
     new_images = []
-    print("原始图片数量是:", len(or_images))
     # Operation after adding a text watermark
     if text_watermark:
         watermarked_images = add_watermark(need_add_watermark_images, need_add_watermark_images1, new_images,
