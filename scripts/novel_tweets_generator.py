@@ -10,7 +10,7 @@ import string
 import subprocess
 import sys
 import traceback
-
+import argparse
 import gradio as gr
 import requests
 from PIL import Image, ImageDraw, ImageFont
@@ -25,6 +25,7 @@ from modules.shared import state
 from scripts import prompts_styles as ps
 from scripts import voice_params as vop
 from scripts import batch_draw_utils
+from scripts import preset_character as pc
 from revChatGPT.V1 import Chatbot as ChatbotV1
 from revChatGPT.V3 import Chatbot as ChatbotV3
 from dotenv import load_dotenv, set_key
@@ -147,6 +148,7 @@ active_code = os.environ.get("ACTIVE_CODE")
 realtime = ''
 is_expired = True
 env_data = {}
+instructions = 'https://ixtrs1l7r3f.feishu.cn/docx/YN07dMSAXoh4eAxmviKcpAVdnrf'
 
 
 def sign_up(code):
@@ -311,6 +313,38 @@ def is_installed(package):
         return False
 
     return spec is not None
+
+
+# analyzing parameters by imitating mj
+def parse_args(args_str, default=None):
+    parser = argparse.ArgumentParser()
+    arg_dict = {}
+    arg_name = None
+    arg_values = []
+    if args_str != "":
+        for arg in args_str.split():
+            if arg.startswith("@"):
+                if arg_name is not None:
+                    if len(arg_values) == 1:
+                        arg_dict[arg_name] = arg_values[0]
+                    elif len(arg_values) > 1:
+                        arg_dict[arg_name] = arg_values[0:]
+                    else:
+                        arg_dict[arg_name] = default
+                arg_name = arg.lstrip("@")
+                arg_values = []
+            else:
+                arg_values.append(arg)
+
+        if arg_name is not None:
+            if len(arg_values) == 1:
+                arg_dict[arg_name] = arg_values[0]
+            elif len(arg_values) > 1:
+                arg_dict[arg_name] = arg_values[0:]
+            else:
+                arg_dict[arg_name] = default
+
+    return arg_dict
 
 
 def run_pip(args, desc=None):
@@ -621,9 +655,16 @@ def deal_with_single_image(max_frames, p, prompt_txt, prompts_folder, default_pr
                 file_encoding = result['encoding']
             with open(prompt_file, "r", encoding=file_encoding) as f:
                 individual_prompt = f.read().strip()
+            parsed_args = parse_args(individual_prompt)
+            index = individual_prompt.find("@")
+            if index != -1:
+                individual_prompt = individual_prompt[:index]
+            if bool(parsed_args):
+                only_digits = re.sub('[^0-9]', '', list(parsed_args.keys())[0])
+                character_num = int(only_digits)
+                individual_prompt = individual_prompt + f'{pc.character_prompts[character_num]}'
             copy_p.prompt = f"{copy_p.prompt}, {individual_prompt}, {lora_name}"
             file_idx += 1
-        # copy_p.seed = int(random.randrange(4294967294))
         if cb_h:
             copy_p.width = 576
             copy_p.height = 1024
@@ -937,7 +978,11 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
         print("脚本已到期")
         return gr.update(value='脚本已到期'), gr.update(interactive=True)
     proxy = None
-    default_pre_prompt = """你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
+    default_pre_prompt = """首先StableDiffusion是一款利用深度学习的文生图模型，支持通过使用提示词来产生新的图像，描述要包含或省略的元素。
+我在这里引入StableDiffusion算法中的Prompt概念，又被称为提示符。
+下面的prompt是用来指导AI绘画模型创作图像的。它们包含了图像的各种细节，如人物的外观、背景、颜色和光线效果，以及图像的主题和风格。这些prompt的格式经常包含括号内的加权数字，用于指定某些细节的重要性或强调。例如，"(masterpiece:1.5)"表示作品质量是非常重要的，多个括号也有类似作用。此外，如果使用中括号，如"{blue hair:white hair:0.3}"，这代表将蓝发和白发加以融合，蓝发占比为0.3。
+以下是用prompt帮助AI模型生成图像的例子：masterpiece,(bestquality),highlydetailed,ultra-detailed,cold,solo,(1girl),(detailedeyes),(shinegoldeneyes),(longliverhair),expressionless,(long sleeves),(puffy sleeves),(white wings),shinehalo,(heavymetal:1.2),(metaljewelry),cross-lacedfootwear (chain),(Whitedoves:1.2)
+其次你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
 你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述。
 你还需要分析场景分镜中各个物体的比重并且将比重按照提示的格式放在每个单词的后面。你只用回复场景分镜内容，其他的不要回复。
 例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，所以我猜袁绍妈妈应该会很开心吧。
@@ -946,7 +991,7 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
 2. 餐馆内，一个女孩, (黑色的长发, 白色的裙子:1.5), 坐在餐桌前, 一个男孩坐在女孩的对面, (黑色的短发, 灰色的外套:1.5), 两个人聊天.
 3. 酒庄内，一个女孩，微笑，(黑色的长发，白色的裙子:1.2)，(站着:1.5)，(拿着1瓶红酒:1.5)
 4. 一个女孩，(白色的裙子，黑色的长发:1.5)，(手上拿着两个包:1.5)，站在豪华的客厅内，
-不要拘泥于我给你示例中的权重数字，权重的范围在1到2之前的权重值。你需要按照分镜中的画面自己判断权重。注意回复中的所有标点符号请使用英文的标点符号包括逗号，不要出现句号，请你牢记这些规则，任何时候都不要忘记。
+不要拘泥于我给你示例中的权重数字，权重的范围在1到2之前的权重值。你需要按照分镜中的画面自己判断权重。注意回复中的所有标点符号请使用英文的标点符号包括逗号，不要出现句号，仿照例子，给出一套详细描述以下内容的prompt。直接开始给出prompt不需要用自然语言描述：请你牢记这些规则，任何时候都不要忘记。
 """
     if ai_prompt != '':
         default_pre_prompt = ai_prompt
@@ -975,7 +1020,7 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
             configs['proxy'] = proxy.replace('http://', '')
         try:
             chatbot = ChatbotV1(config=configs)
-            for data in chatbot.ask(prompt, auto_continue=True):
+            for data in chatbot.ask(prompt):
                 response = data["message"]
         except Exception as error:
             print(f"Error: {error}")
@@ -1556,9 +1601,9 @@ class Script(scripts.Script):
         return not is_img2img
 
     def ui(self, is_img2img):
-        gr.HTML("此脚本可以与controlnet一起使用，若一起使用请把controlnet的参考图留空。")
+        gr.HTML('<br><a href="{}"><font color=blue>！！！点击这里了解如何使用该脚本！！！</font></a>'.format(instructions))
         with gr.Accordion(label="注册和激活", open=True):
-            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏，首次留空激活会给一小时的免费试用',
+            active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏，首次留空激活会给六小时的免费试用',
                                            visible=is_expired)
             if userid != '' and active_code != '':
                 value = '重新激活'
@@ -1566,7 +1611,7 @@ class Script(scripts.Script):
                 value = '注册并激活'
             ensure_sign_up = gr.Button(value=value, visible=is_expired)
             if is_expired:
-                active_info_text = '脚本未激活或者已过期，请激活！'
+                active_info_text = '脚本未激活或者已过期，请激活或刷新激活信息！'
             else:
                 active_info_text = os.environ.get('ACTIVE_INFO')
             active_info = gr.Textbox(label="激活信息是", value=active_info_text,
@@ -1577,7 +1622,7 @@ class Script(scripts.Script):
                 refresh_active_data()
                 expired = compare_time(env_data['EXPIRE_AT'])
                 if expired:
-                    refresh_active_info_text = '脚本未激活或者已过期，请激活！'
+                    refresh_active_info_text = '脚本未激活或者已过期，请激活或刷新激活信息！'
                 else:
                     refresh_active_info_text = os.environ.get('ACTIVE_INFO')
                 return gr.update(value=refresh_active_info_text), gr.update(visible=expired), gr.update(visible=expired, value='重新激活')
@@ -1606,14 +1651,12 @@ class Script(scripts.Script):
 
                     need_combine_prompt.change(is_show_combine, inputs=[need_combine_prompt],
                                                outputs=[combine_prompt_type])
-                    with gr.Row():
-                        need_default_prompt = gr.Checkbox(label="自行输入默认正面提示词(勾选后上面选择将失效)",
-                                                          value=False)
-                        need_negative_prompt = gr.Checkbox(label="自行输入默认负面提示词(勾选后需要自行输入负面提示词)",
-                                                           value=False)
 
-                    prompt_txt = gr.Textbox(label="默认提示词，将影响各帧", lines=3, max_lines=5, value="",
-                                            visible=False)
+                    with gr.Row():
+                        need_default_prompt = gr.Checkbox(label="自行输入默认正面提示词(勾选后上面选择将失效)", value=False)
+                        need_negative_prompt = gr.Checkbox(label="自行输入默认负面提示词(勾选后需要自行输入负面提示词)", value=False)
+
+                    prompt_txt = gr.Textbox(label="默认提示词，将影响各帧", lines=3, max_lines=5, value="", visible=False)
 
                     def is_need_default_prompt(is_need):
                         return gr.update(visible=is_need)
@@ -1621,10 +1664,8 @@ class Script(scripts.Script):
                     need_default_prompt.change(is_need_default_prompt, inputs=[need_default_prompt],
                                                outputs=[prompt_txt])
 
-                    need_mix_models = gr.Checkbox(label="分片使用模型(勾选后请在下方输入模型全名包括后缀,使用 ',' 分隔)",
-                                                  value=False, visible=False)
-                    models_txt = gr.Textbox(label="模型集合", lines=3, max_lines=5, value="",
-                                            visible=False)
+                    need_mix_models = gr.Checkbox(label="分片使用模型(勾选后请在下方输入模型全名包括后缀,使用 ',' 分隔)", value=False, visible=False)
+                    models_txt = gr.Textbox(label="模型集合", lines=3, max_lines=5, value="", visible=False)
 
                     def is_need_mix_models(is_need):
                         return gr.update(visible=is_need)
@@ -1671,6 +1712,40 @@ class Script(scripts.Script):
                         )
                         api_cb.change(change_state, inputs=[api_cb], outputs=[web_cb])
                         web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb])
+                    preset_character = gr.Dropdown(
+                        pc.character_list,
+                        label="场景人物预设(仅做展示，请阅读使用说明书了解如何使用)",
+                        value="0.无")
+
+                    with gr.Row():
+                        with gr.Column(scale=2, min_width=20):
+                            custom_preset_title = gr.Textbox(placeholder='自定义预设标题', label='预设标题', visible=False)
+                        with gr.Column(scale=8):
+                            custom_preset = gr.Textbox(placeholder='自定义预设内容', label='预设内容', visible=False)
+                    add_preset = gr.Button(value='保存', visible=False)
+
+                    def change_character(character):
+                        if character == '自定义':
+                            return gr.update(visible=True), gr.update(visible=True), gr.update(visible=True)
+                        else:
+                            return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+
+                    preset_character.change(change_character, inputs=[preset_character], outputs=[custom_preset_title, custom_preset, add_preset])
+
+                    def add_character_preset(preset_title, preset_content):
+                        length = len(pc.character_list)
+                        preset_title = f"{length - 1}.{preset_title}"
+                        pc.character_list.insert(-1, preset_title)
+                        pc.character_prompts.append(preset_content)
+                        current_file_path = os.path.abspath(__file__)
+                        current_dir_path = os.path.dirname(current_file_path)
+                        file_path = os.path.join(current_dir_path, 'preset_character.py')
+                        with open(file_path, 'w') as f:
+                            f.write(f"character_list = {pc.character_list}\n")
+                            f.write(f"character_prompts = {pc.character_prompts}\n")
+                        return gr.update(choices=pc.character_list, value=pc.character_list[length - 1])
+
+                    add_preset.click(add_character_preset, inputs=[custom_preset_title, custom_preset], outputs=[preset_character])
                     ai_article = gr.Textbox(
                         label="AI处理的推文将显示在这里",
                         lines=1,
@@ -1783,22 +1858,26 @@ class Script(scripts.Script):
                                 lines=1, max_lines=2,
                                 value=""
                             )
+            gr.HTML(f"此设备机器码是：{machine_code}")
 
         return [active_code_input, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
                 text_watermark, text_watermark_font, text_watermark_target,
                 text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path,
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
-                ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts,
+                ai_prompt, scene_number, deal_with_ai, ai_article, preset_character, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
-                voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images]
+                voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images,
+                custom_preset_title, custom_preset, add_preset]
 
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
             text_watermark, text_watermark_font, text_watermark_target,
             text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path, default_prompt_type,
             need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type,
-            original_article, ai_prompt, scene_number, deal_with_ai, ai_article, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
+            original_article, ai_prompt, scene_number, deal_with_ai, ai_article, preset_character, api_cb, web_cb, btn_save_ai_prompts,
+            tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition,
-            btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images):
+            btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images, custom_preset_title, custom_preset,
+            add_preset):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True

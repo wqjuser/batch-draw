@@ -29,8 +29,14 @@ default_negative_prompts = "Paintings, sketches, negative_hand-neg, (worst quali
                            "too long tongue, black tongue, big mouth, cracked mouth, bad mouth, dirty face, dirty teeth, dirty pantie, " \
                            "fused pantie, poorly drawn pantie, fused cloth, poorly drawn cloth, bad pantie, yellow teeth, thick lips"
 
+anime_negative_prompt = 'Paintings, sketches, negative_hand-neg, (worst quality:2), (low quality:2), (normal quality:2), ' \
+                        'extra heads, bad-image-v2-39000, bad_prompt_version2, bad-hands-5, ' \
+                        'EasyNegative, ng_deepnegative_v1_75t, (bad-artist-anime:0.7), ' \
+                        '(simple background:1.35), lowers, long neck, out of frame, extra fingers, mutated hands, monochrome, ' \
+                        'text, jpeg artifacts, signature, watermark, username, '
+
 default_prompts = "(8k, best quality, masterpiece:1.2), finely detail, official art, incredibly absurdres, huge filesize, ultra-detailed, " \
-                  "highres, extremely detailed, "
+                  "highres, extremely detailed, perfect face, high resolution, "
 
 default_prompts_fix_hands = default_prompts + "<lyco:GoodHands-beta2:1>, "
 
