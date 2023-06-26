@@ -48,6 +48,8 @@ import wave
 import azure.cognitiveservices.speech as speechsdk
 from supabase import create_client, Client
 from datetime import datetime, timedelta, timezone
+import ntplib
+from time import ctime
 
 current_path = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_path)
@@ -76,6 +78,12 @@ def chang_time_zone(utc_time_str):
     local_time = utc_time.astimezone(east_eight_zone)
     local_time_str = local_time.strftime("%Y-%m-%d %H:%M:%S")
     return local_time_str
+
+
+def get_ntp_time():
+    ntp_client = ntplib.NTPClient()
+    response = ntp_client.request('pool.ntp.org')
+    return response.tx_time
 
 
 def compare_time(time_str):
