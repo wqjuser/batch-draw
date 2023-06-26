@@ -978,27 +978,37 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
         print("脚本已到期")
         return gr.update(value='脚本已到期'), gr.update(interactive=True)
     proxy = None
-    default_pre_prompt = """首先StableDiffusion是一款利用深度学习的文生图模型，支持通过使用提示词来产生新的图像，描述要包含或省略的元素。
-我在这里引入StableDiffusion算法中的Prompt概念，又被称为提示符。
-下面的prompt是用来指导AI绘画模型创作图像的。它们包含了图像的各种细节，如人物的外观、背景、颜色和光线效果，以及图像的主题和风格。这些prompt的格式经常包含括号内的加权数字，用于指定某些细节的重要性或强调。例如，"(masterpiece:1.5)"表示作品质量是非常重要的，多个括号也有类似作用。此外，如果使用中括号，如"{blue hair:white hair:0.3}"，这代表将蓝发和白发加以融合，蓝发占比为0.3。
-以下是用prompt帮助AI模型生成图像的例子：masterpiece,(bestquality),highlydetailed,ultra-detailed,cold,solo,(1girl),(detailedeyes),(shinegoldeneyes),(longliverhair),expressionless,(long sleeves),(puffy sleeves),(white wings),shinehalo,(heavymetal:1.2),(metaljewelry),cross-lacedfootwear (chain),(Whitedoves:1.2)
-其次你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
-你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请给我添加人物数量的描述。
-你还需要分析场景分镜中各个物体的比重并且将比重按照提示的格式放在每个单词的后面。你只用回复场景分镜内容，其他的不要回复。
-例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，所以我猜袁绍妈妈应该会很开心吧。
-将它分为四个场景，你需要这样回答我：
-1. 情侣, (一个女孩和一个男孩:1.5), (女孩黑色的长发:1.2), 微笑, (白色的裙子:1.2), 非常漂亮的面庞, (女孩手挽着一个男孩:1.5), 男孩黑色的短发, (穿着灰色运动装, 帅气的脸庞:1.2), 走在大学校园里, 
-2. 餐馆内，一个女孩, (黑色的长发, 白色的裙子:1.5), 坐在餐桌前, 一个男孩坐在女孩的对面, (黑色的短发, 灰色的外套:1.5), 两个人聊天.
-3. 酒庄内，一个女孩，微笑，(黑色的长发，白色的裙子:1.2)，(站着:1.5)，(拿着1瓶红酒:1.5)
-4. 一个女孩，(白色的裙子，黑色的长发:1.5)，(手上拿着两个包:1.5)，站在豪华的客厅内，
-不要拘泥于我给你示例中的权重数字，权重的范围在1到2之前的权重值。你需要按照分镜中的画面自己判断权重。注意回复中的所有标点符号请使用英文的标点符号包括逗号，不要出现句号，仿照例子，给出一套详细描述以下内容的prompt。直接开始给出prompt不需要用自然语言描述：请你牢记这些规则，任何时候都不要忘记。
+    default_pre_prompt = """首先Stable Diffusion是一款利用深度学习的文生图模型，支持通过使用提示词来产生新的图像，描述要包含或省略的元素。 我在这里引入 Stable Diffusion 
+    算法中的 Prompt 概念，又被称为提示符。 这里的 Prompt 通常可以用来描述图像，他由普通常见的单词构成，最好是可以在数据集来源站点找到的著名标签（比如 Danbooru)。 
+    下面我将说明 Prompt 的生成步骤，这里的 Prompt 主要用于描述人物。 在 Prompt 的生成中，你需要通过提示词来描述 人物属性，主题，外表，情绪，衣服，姿势，视角，动作，背景 。 
+    用单词或短语甚至自然语言的标签来描述，并不局限于我给你的单词。 然后将你想要的相似的提示词组合在一起，请使用英文半角 , 做分隔符，并将这些按从最重要到最不重要的顺序 排列。  
+    人物属性中，1girl 表示你生成了一个女孩，1boy 表示你生成了一个男孩，人数可以多人。 另外注意，Prompt中不能带有-和_。可以有空格和自然语言，但不要太多，单词不能重复。 
+    包含人物性别、主题、外表、情绪、衣服、姿势、视角、动作、背景，将这些按从最重要到最不重要的顺序排列,请尝试生成故事分镜的Prompt,细节越多越好。
+    其次你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，
+    场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），
+    如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
+    你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请添加人物
+    数量的描述。
+    你还需要分析场景分镜中各个物体的比重并且将比重按照提示的格式放在每个单词的后面。你只用回复场景分镜内容，其他的不要回复。
+    例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......
+    于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，
+    所以我猜袁绍妈妈应该会很开心吧。
+    将它分为四个场景，你可能需要这样回答我：
+    1. 情侣, (一个女孩和一个男孩:1.5), (女孩黑色的长发:1.2), 微笑, (白色的裙子:1.2), 非常漂亮的面庞, (女孩手挽着一个男孩:1.5), 男孩黑色的短发, (穿着灰色运动装, 
+    帅气的脸庞:1.2), 走在大学校园里, 
+    2. 餐馆内, 一个女孩, (黑色的长发, 白色的裙子:1.5), 坐在餐桌前, 一个男孩坐在女孩的对面, (黑色的短发, 灰色的外套:1.5), 两个人聊天, 
+    3. 酒庄内, 一个女孩, 微笑, (黑色的长发, 白色的裙子:1.2),(站着:1.5), (拿着1瓶红酒:1.5), 
+    4. 一个女孩, (白色的裙子, 黑色的长发:1.5),(手上拿着两个包:1.5), 站在豪华的客厅内, 
+    不要拘泥于我给你示例中的权重数字，权重的范围在1到2之前的权重值。你需要按照分镜中的画面自己判断权重。注意回复中的所有标点符号请使用英文的标点符号包括逗号，不要出现句号，
+    仿照例子，给出一套详细描述以下内容的prompt。直接开始给出prompt不需要用自然语言描述：请你牢记这些规则，任何时候都不要忘记。
 """
     if ai_prompt != '':
         default_pre_prompt = ai_prompt
     if int(scene_number) != 0:
         prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜。"
     else:
-        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。你不需要向我解释你转换场景个数和权重的原因，你只用回复场景分镜内容，其他的不要回复"
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。" \
+                                             f"你不需要向我解释你转换场景个数和权重的原因，你只用回复场景分镜内容，其他的不要回复"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
@@ -1071,7 +1081,9 @@ def save_prompts(prompts, is_translate=False):
                 content = content.replace(': ', ':').lower()
                 with open(filename, 'w') as f:
                     f.write(content)
-            print("AI推文保存完成，保存路径是:", f'{novel_tweets_generator_prompts_sub_folder}文件夹内')
+            full_path = f'{os.getcwd()}/{novel_tweets_generator_prompts_sub_folder}'
+            full_path = full_path.replace('\\', '/')
+            print("AI推文保存完成，保存路径在:", f'{full_path}  的文件夹内')
             return gr.update(interactive=True)
         else:
             print("AI推文翻译失败")
@@ -1470,6 +1482,8 @@ def tts_huawei(aue, per, pit, spd, text, vol):
 
 
 def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, voice_role_play):
+    pits = ['x-low', 'low', 'default', 'medium', 'high', 'x-high']
+    real_pit = pits[int(pit) - 1]
     print("微软文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
     file_count = 0
     for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
@@ -1508,12 +1522,14 @@ def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intens
         else:
             role_tag = f'role="{voice_role}"'
         if style_tag != '' or role_tag != '':
-            express_as_tag = f'<mstts:express-as {role_tag} {style_tag}>{text}</mstts:express-as>'
+            express_as_tag = f'<mstts:express-as {role_tag} {style_tag}><prosody volume="{vol}" pitch="{real_pit}" rate="{spd}">{text}</prosody>' \
+                             f'</mstts:express-as>'
         else:
             express_as_tag = text
         text = f'<speak {speak_tag}><voice name="{voice_name}">{express_as_tag}</voice></speak>'
     else:
-        text = f'<speak {speak_tag}><voice name="{voice_name}">{text}</voice></speak>'
+        text = f'<speak {speak_tag}><voice name="{voice_name}"><prosody volume="{vol}" pitch="{real_pit}" rate="{spd}">{text}</prosody></voice>' \
+               f'</speak>'
     speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
     result = speech_synthesizer.speak_ssml_async(text).get()
     # Check result
@@ -1548,8 +1564,8 @@ def change_tts(tts_type):
             gr.update(visible=False), gr.update(visible=False)
     elif tts_type == '微软':
         return gr.update(choices=vop.azure['voice_role'], value=vop.azure['voice_role'][0]), gr.update(visible=False), \
-            gr.update(minimum=-500, maximum=500, value=0, step=100), gr.update(minimum=-500, maximum=500, value=0, step=100), \
-            gr.update(minimum=0, maximum=100, value=50, step=10), gr.update(choices=vop.azure['aue'], value=vop.azure['aue'][0]), \
+            gr.update(minimum=0.5, maximum=2, value=1, step=0.1), gr.update(minimum=1, maximum=6, value=3, step=1), \
+            gr.update(minimum=0, maximum=100, value=100, step=5), gr.update(choices=vop.azure['aue'], value=vop.azure['aue'][0]), \
             gr.update(visible=False), gr.update(visible=False)
 
 
