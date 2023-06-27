@@ -1688,7 +1688,7 @@ class Script(scripts.Script):
 
                     need_mix_models.change(is_need_mix_models, inputs=[need_mix_models],
                                            outputs=[models_txt])
-                    lora_name = gr.Textbox(label="使用Lora", lines=1, max_lines=2, value="",
+                    lora_name = gr.Textbox(label="使用Lora（此处输入的Lora将影响所有图片）", lines=1, max_lines=2, value="",
                                            placeholder='由于二次元的Lora众多，风格各异，小说的类型也很多，所有脚本并没有内置Lora，想要出现更好的效果可以在此输入Lora，'
                                                        '格式是<lora:lora的名字:lora的权重>,支持多个lora，例如 <lora:fashionGirl_v54:0.5>, '
                                                        '<lora:cuteGirlMix4_v10:0.6>')
@@ -1730,7 +1730,7 @@ class Script(scripts.Script):
                         web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb])
                     preset_character = gr.Dropdown(
                         pc.character_list,
-                        label="场景人物预设(仅做展示，请阅读使用说明书了解如何使用)",
+                        label="场景人物预设(仅做展示，自带的预设都没有加入Lora控制，请阅读使用说明书了解如何使用)",
                         value="0.无")
 
                     with gr.Row():
@@ -1763,7 +1763,7 @@ class Script(scripts.Script):
 
                     add_preset.click(add_character_preset, inputs=[custom_preset_title, custom_preset], outputs=[preset_character])
                     ai_article = gr.Textbox(
-                        label="AI处理的推文将显示在这里",
+                        label="AI处理的推文将显示在这里（建议在每个场景描述后面加入Lora，图片会更好看，人物会更稳定，建议在预设里面加入Lora）",
                         lines=1,
                         max_lines=6,
                         value=""
