@@ -1630,9 +1630,12 @@ class Script(scripts.Script):
                 active_info_text = '脚本未激活或者已过期，请激活或刷新激活信息！'
             else:
                 active_info_text = os.environ.get('ACTIVE_INFO')
-            active_info = gr.Textbox(label="激活信息是", value=active_info_text,
-                                     interactive=False)
-            refresh_active_info = gr.Button(value='刷新激活信息')
+            gr.HTML('激活信息是：')
+            with gr.Row():
+                with gr.Column(scale=16):
+                    active_info = gr.Textbox(value=active_info_text, interactive=False, show_label=False)
+                with gr.Column(scale=1, min_width=5):
+                    refresh_active_info = gr.Button(value='\U0001f504')
 
             def update_active_info():
                 refresh_active_data()
@@ -1645,7 +1648,7 @@ class Script(scripts.Script):
 
             refresh_active_info.click(update_active_info, outputs=[active_info, active_code_input, ensure_sign_up])
             ensure_sign_up.click(sign_up, inputs=[active_code_input], outputs=[active_info])
-        with gr.Accordion(label="基础属性，必填项，每一项都不能为空", open=True):
+        with gr.Accordion(label="基础属性", open=True):
             with gr.Column(variant='panel'):
                 with gr.Accordion(label="1. 默认提示词相关", open=True):
                     default_prompt_type = gr.Dropdown(
@@ -1832,49 +1835,49 @@ class Script(scripts.Script):
                     cb_custom.select(change_selected, inputs=[cb_custom], outputs=[cb_h, cb_w])
                 gr.HTML("")
 
-            with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True, visible=False):
-                with gr.Column(variant='panel', visible=False):
-                    with gr.Row():
-                        save_or = gr.Checkbox(label="8. 是否保留原图",
-                                              info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
+        with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True, visible=False):
+            with gr.Column(variant='panel', visible=False):
+                with gr.Row():
+                    save_or = gr.Checkbox(label="8. 是否保留原图",
+                                          info="为了不影响查看原图，默认选中会保存未删除背景的图片", value=True)
 
-            with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
-                with gr.Column(variant='panel'):
-                    with gr.Column():
-                        text_watermark = gr.Checkbox(label="7. 添加文字水印", info="自定义文字水印")
-                        with gr.Row():
-                            with gr.Column(scale=8):
-                                with gr.Row():
-                                    text_watermark_font = gr.Dropdown(
-                                        ["微软雅黑", "宋体", "黑体", "楷体", "仿宋宋体"],
-                                        label="内置5种字体,启用自定义后这里失效",
-                                        value="微软雅黑")
-                                    text_watermark_target = gr.Dropdown(["0", "1", "2"],
-                                                                        label="水印添加对象(0:原始,1:透明,2:全部)",
-                                                                        value="0", visible=False)
-                                    text_watermark_pos = gr.Dropdown(["0", "1", "2", "3", "4"],
-                                                                     label="位置(0:居中,1:左上,2:右上,3:左下,4:右下)",
-                                                                     value="0")
-                            with gr.Column(scale=1):
-                                text_watermark_color = gr.ColorPicker(label="自定义水印颜色")
+        with gr.Accordion(label="更多操作(打开看看说不定有你想要的功能)", open=False):
+            with gr.Column(variant='panel'):
+                with gr.Column():
+                    text_watermark = gr.Checkbox(label="7. 添加文字水印", info="自定义文字水印")
                     with gr.Row():
+                        with gr.Column(scale=8):
+                            with gr.Row():
+                                text_watermark_font = gr.Dropdown(
+                                    ["微软雅黑", "宋体", "黑体", "楷体", "仿宋宋体"],
+                                    label="内置5种字体,启用自定义后这里失效",
+                                    value="微软雅黑")
+                                text_watermark_target = gr.Dropdown(["0", "1", "2"],
+                                                                    label="水印添加对象(0:原始,1:透明,2:全部)",
+                                                                    value="0", visible=False)
+                                text_watermark_pos = gr.Dropdown(["0", "1", "2", "3", "4"],
+                                                                 label="位置(0:居中,1:左上,2:右上,3:左下,4:右下)",
+                                                                 value="0")
                         with gr.Column(scale=1):
-                            text_watermark_size = gr.Number(label="水印字体大小", value=30, min=30)
-                        with gr.Column(scale=7):
-                            text_watermark_content = gr.Textbox(label="文字水印内容（不要设置过长的文字会遮挡图片）",
-                                                                lines=1,
-                                                                max_lines=1,
-                                                                value="")
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            custom_font = gr.Checkbox(label="启用自定义水印字体", info="自定义水印字体")
-                        with gr.Column(scale=7):
-                            text_font_path = gr.Textbox(
-                                label="输入自定义水印字体路径(勾选左边自定义水印字体单选框以及功能5起效)",
-                                lines=1, max_lines=2,
-                                value=""
-                            )
-            gr.HTML(f"此设备机器码是：{machine_code}")
+                            text_watermark_color = gr.ColorPicker(label="自定义水印颜色")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        text_watermark_size = gr.Number(label="水印字体大小", value=30, min=30)
+                    with gr.Column(scale=7):
+                        text_watermark_content = gr.Textbox(label="文字水印内容（不要设置过长的文字会遮挡图片）",
+                                                            lines=1,
+                                                            max_lines=1,
+                                                            value="")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        custom_font = gr.Checkbox(label="启用自定义水印字体", info="自定义水印字体")
+                    with gr.Column(scale=7):
+                        text_font_path = gr.Textbox(
+                            label="输入自定义水印字体路径(勾选左边自定义水印字体单选框以及功能5起效)",
+                            lines=1, max_lines=2,
+                            value=""
+                        )
+        gr.HTML(f"此设备机器码是：{machine_code}")
 
         return [active_code_input, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
                 text_watermark, text_watermark_font, text_watermark_target,
