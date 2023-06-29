@@ -26,6 +26,7 @@ from scripts import prompts_styles as ps
 from scripts import voice_params as vop
 from scripts import batch_draw_utils
 from scripts import preset_character as pc
+from scripts import models
 from revChatGPT.V1 import Chatbot as ChatbotV1
 from revChatGPT.V3 import Chatbot as ChatbotV3
 from dotenv import load_dotenv, set_key
@@ -973,7 +974,7 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
                                                   rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
 
-def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy):
+def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy, ai_model):
     if compare_time(env_data['EXPIRE_AT']):
         print("脚本已到期")
         return gr.update(value='脚本已到期'), gr.update(interactive=True)
@@ -1005,17 +1006,18 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
     if ai_prompt != '':
         default_pre_prompt = ai_prompt
     if int(scene_number) != 0:
-        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜。"
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜。你不需要向我解释你转换场景个数和" \
+                                             f"权重的原因，你只用回复场景分镜内容，其他的不要回复，请用中文回答"
     else:
         prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。" \
-                                             f"你不需要向我解释你转换场景个数和权重的原因，你只用回复场景分镜内容，其他的不要回复"
+                                             f"你不需要向我解释你转换场景个数和权重的原因，你只用回复场景分镜内容，其他的不要回复，请用中文回答"
     response = ""
     if use_proxy:
         proxy = os.environ.get('PROXY')
     if api_cb:
         try:
             openai_key = env_data['KEY']
-            chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None, engine='gpt-3.5-turbo-0613',
+            chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None, engine=ai_model,
                                 temperature=0.8)
             response = chatbot.ask(prompt=prompt)
         except Exception as error:
@@ -1029,8 +1031,11 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
         if proxy is not None and proxy != "":
             configs['proxy'] = proxy.replace('http://', '')
         try:
+            if env_data['IS_AI_PLUS']:
+                configs['SERVER_SIDE_ARKOSE'] = True
+                configs['model'] = ai_model
             chatbot = ChatbotV1(config=configs)
-            for data in chatbot.ask(prompt):
+            for data in chatbot.ask(prompt=prompt, auto_continue=True):
                 response = data["message"]
         except Exception as error:
             print(f"Error: {error}")
@@ -1055,7 +1060,7 @@ def deepl_translate_text(api_key, text, target_lang: str = 'EN-US'):
         return None
 
 
-def save_prompts(prompts, is_translate=False):
+def save_prompts(prompts):
     if compare_time(env_data['EXPIRE_AT']):
         print("脚本已到期")
         return gr.update(interactive=True)
@@ -1065,10 +1070,10 @@ def save_prompts(prompts, is_translate=False):
         appid = env_data['BAIDU_TRANSLATE_APPID']
         key = env_data['BAIDU_TRANSLATE_KEY']
         deepl_api_key = env_data['DEEPL_API_KEY']
-        if is_translate:
-            prompts = deepl_translate_text(deepl_api_key, prompts)
-            if prompts is None:
-                prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
+        # if is_translate:
+        prompts = deepl_translate_text(deepl_api_key, prompts)
+        if prompts is None:
+            prompts = baidu_translate(prompts, 'zh', 'en', appid, key)
         current_folders = count_subdirectories(novel_tweets_generator_prompts_folder)
         novel_tweets_generator_prompts_sub_folder = 'outputs/novel_tweets_generator/prompts/' + f'{current_folders + 1}'
         os.makedirs(novel_tweets_generator_prompts_sub_folder, exist_ok=True)
@@ -1098,6 +1103,13 @@ def change_state(is_checked):
         return gr.update(value=False)
     else:
         return gr.update(value=True)
+
+
+def change_ai_model(api, web):
+    if api and not web:
+        return gr.update(choices=models.api_models, value=models.api_models[0])
+    elif not api and web:
+        return gr.update(choices=models.web_models, value=models.web_models[0])
 
 
 def change_selected(is_checked):
@@ -1617,7 +1629,7 @@ class Script(scripts.Script):
         return not is_img2img
 
     def ui(self, is_img2img):
-        gr.HTML('<br><a href="{}"><font color=blue>！！！点击这里了解如何使用该脚本！！！</font></a>'.format(instructions))
+        gr.HTML('<a href="{}"><font color=blue>！！！点击这里了解如何使用该脚本！！！</font></a>'.format(instructions))
         with gr.Accordion(label="注册和激活", open=True):
             active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏，首次留空激活会给六小时的免费试用',
                                            visible=is_expired)
@@ -1704,7 +1716,6 @@ class Script(scripts.Script):
                 original_article = gr.Textbox(
                     label="输入推文原文",
                     lines=1,
-                    max_lines=6,
                     value=""
                 )
                 with gr.Accordion(label="3.1 AI处理原文"):
@@ -1714,23 +1725,28 @@ class Script(scripts.Script):
                         value=10,
                         min=0
                     )
-                    with gr.Row():
-                        api_cb = gr.Checkbox(
-                            label="使用api方式处理",
-                            value=True
-                        )
-                        web_cb = gr.Checkbox(
-                            label="使用web方式处理"
-                        )
-                        cb_use_proxy = gr.Checkbox(
-                            label="使用代理(一般无需代理)"
-                        )
+                    with gr.Column():
+                        with gr.Row():
+                            api_cb = gr.Checkbox(
+                                label="api方式",
+                                value=True
+                            )
+                            web_cb = gr.Checkbox(
+                                label="web方式"
+                            )
+                            cb_use_proxy = gr.Checkbox(
+                                label="使用代理(一般无需代理)"
+                            )
+                        ai_models = gr.Dropdown(label='AI模型', choices=models.api_models, value=models.api_models[0])
                         cb_trans_prompt = gr.Checkbox(
-                            label="翻译AI推文,保存推文时生效",
+                            label="翻译AI推文",
+                            visible=False,
                             value=True
                         )
                         api_cb.change(change_state, inputs=[api_cb], outputs=[web_cb])
                         web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb])
+                        api_cb.change(change_ai_model, inputs=[api_cb, web_cb], outputs=[ai_models])
+                        web_cb.change(change_ai_model, inputs=[api_cb, web_cb], outputs=[ai_models])
                     preset_character = gr.Dropdown(
                         pc.character_list,
                         label="场景人物预设(仅做展示，自带的预设都没有加入Lora控制，请阅读使用说明书了解如何使用)",
@@ -1773,15 +1789,16 @@ class Script(scripts.Script):
                     )
                     with gr.Row():
                         deal_with_ai = gr.Button(value="AI处理推文")
-                        btn_save_ai_prompts = gr.Button(value="保存AI推文")
+                        btn_save_ai_prompts = gr.Button(value="翻译并保存AI推文")
                     tb_save_ai_prompts_folder_path = gr.Textbox(
                         label="请输入推文保存的路径，若为空则保存在outputs/novel_tweets_generator/prompts路径下的按序号递增的文件夹下")
 
                     deal_with_ai.click(set_un_clickable, outputs=[deal_with_ai])
-                    deal_with_ai.click(ai_process_article, inputs=[ai_prompt, original_article, scene_number, api_cb, cb_use_proxy],
+                    deal_with_ai.click(ai_process_article,
+                                       inputs=[ai_prompt, original_article, scene_number, api_cb, cb_use_proxy, ai_models],
                                        outputs=[ai_article, deal_with_ai])
                     btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
-                    btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_trans_prompt], outputs=[btn_save_ai_prompts])
+                    btn_save_ai_prompts.click(save_prompts, inputs=[ai_article], outputs=[btn_save_ai_prompts])
                 with gr.Accordion(label="3.2 原文转语音"):
                     voice_radio = gr.Radio(['百度', '阿里', '华为', '微软'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度',
                                            value='百度')
@@ -1886,7 +1903,7 @@ class Script(scripts.Script):
                 ai_prompt, scene_number, deal_with_ai, ai_article, preset_character, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
                 voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images,
-                custom_preset_title, custom_preset, add_preset]
+                custom_preset_title, custom_preset, add_preset, ai_models]
 
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
             text_watermark, text_watermark_font, text_watermark_target,
@@ -1896,7 +1913,7 @@ class Script(scripts.Script):
             tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition,
             btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images, custom_preset_title, custom_preset,
-            add_preset):
+            add_preset, ai_models):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
