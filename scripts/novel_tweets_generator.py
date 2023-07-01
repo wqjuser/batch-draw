@@ -27,6 +27,7 @@ from scripts import voice_params as vop
 from scripts import batch_draw_utils
 from scripts import preset_character as pc
 from scripts import models
+from scripts import free_version_params as fvp
 from revChatGPT.V1 import Chatbot as ChatbotV1
 from revChatGPT.V3 import Chatbot as ChatbotV3
 from dotenv import load_dotenv, set_key
@@ -146,9 +147,15 @@ key = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 userid = os.environ.get("USER_ID")
 active_code = os.environ.get("ACTIVE_CODE")
+is_free = os.environ.get("IS_FREE")
 realtime = ''
 is_expired = True
-env_data = {}
+is_valid_params = False
+if is_free == 'True':
+    env_data = fvp.env_data
+    is_valid_params = fvp.validate_parameters(env_data)
+else:
+    env_data = {}
 instructions = 'https://ixtrs1l7r3f.feishu.cn/docx/YN07dMSAXoh4eAxmviKcpAVdnrf'
 
 
@@ -444,7 +451,11 @@ def refresh_active_data():
         load_dotenv(dotenv_path=env_path, override=True)
 
 
-refresh_active_data()
+if is_free == 'False':
+    refresh_active_data()
+else:
+    if is_valid_params:
+        get_and_deal_azure_speech_list()
 
 
 def get_last_subdir(path):
@@ -974,10 +985,11 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
                                                   rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
 
-def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy, ai_model):
-    if compare_time(env_data['EXPIRE_AT']):
-        print("脚本已到期")
-        return gr.update(value='脚本已到期'), gr.update(interactive=True)
+def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy, ai_model, cb_free):
+    if not cb_free:
+        if compare_time(env_data['EXPIRE_AT']):
+            print("脚本已到期")
+            return gr.update(value='脚本已到期'), gr.update(interactive=True)
     proxy = None
     default_pre_prompt = """首先Stable Diffusion是一款利用深度学习的文生图模型，支持通过使用提示词来产生新的图像，描述要包含或省略的元素。 我在这里引入 Stable Diffusion 
     算法中的 Prompt 概念，又被称为提示符。 这里的 Prompt 通常可以用来描述图像，他由普通常见的单词构成，最好是可以在数据集来源站点找到的著名标签（比如 Danbooru)。 
@@ -1032,8 +1044,8 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
             configs['proxy'] = proxy.replace('http://', '')
         try:
             if env_data['IS_AI_PLUS']:
-                configs['SERVER_SIDE_ARKOSE'] = True
-                configs['model'] = ai_model
+                if ai_model != 'gpt-3.5':
+                    configs['model'] = ai_model
             chatbot = ChatbotV1(config=configs)
             for data in chatbot.ask(prompt=prompt, auto_continue=True):
                 response = data["message"]
@@ -1060,10 +1072,11 @@ def deepl_translate_text(api_key, text, target_lang: str = 'EN-US'):
         return None
 
 
-def save_prompts(prompts):
-    if compare_time(env_data['EXPIRE_AT']):
-        print("脚本已到期")
-        return gr.update(interactive=True)
+def save_prompts(prompts, cb_free):
+    if not cb_free:
+        if compare_time(env_data['EXPIRE_AT']):
+            print("脚本已到期")
+            return gr.update(interactive=True)
     if prompts != "":
         prompts = re.sub(r'\n\s*\n', '\n', prompts)
         print("开始处理并保存AI推文")
@@ -1123,26 +1136,31 @@ def set_un_clickable():
     return gr.update(interactive=False)
 
 
-def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotion_intensity, role_play):
-    if compare_time(env_data['EXPIRE_AT']):
-        print("脚本已到期")
-        return gr.update(interactive=True)
+def tts_fun(text, spd, pit, vol, per, aue, tts_type, voice_emotion, voice_emotion_intensity, role_play, voice_save_dir, cb_free):
+    if not cb_free:
+        if compare_time(env_data['EXPIRE_AT']):
+            print("脚本已到期")
+            return gr.update(interactive=True)
     print("语音引擎类型是:", tts_type)
     if tts_type == "百度":
-        tts_baidu(aue, per, pit, spd, text, vol)
+        tts_baidu(aue, per, pit, spd, text, vol, voice_save_dir)
     elif tts_type == "阿里":
-        tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity)
+        tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, voice_save_dir)
     elif tts_type == "华为":
-        tts_huawei(aue, per, pit, spd, text, vol)
+        tts_huawei(aue, per, pit, spd, text, vol, voice_save_dir)
     elif tts_type == '微软':
-        tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, role_play)
+        tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, role_play, voice_save_dir)
     return gr.update(interactive=True)
 
 
-def tts_baidu(aue, per, pit, spd, text, vol):
+def tts_baidu(aue, per, pit, spd, text, vol, voice_save_dir):
     file_count = 0
-    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
-        file_count += len(files)
+    if voice_save_dir == '':
+        for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+            file_count += len(files)
+    else:
+        for root, dirs, files in os.walk(voice_save_dir):
+            file_count += len(files)
     is_short = True
     if len(text) > 60:
         is_short = False
@@ -1236,13 +1254,22 @@ def tts_baidu(aue, per, pit, spd, text, vol):
                                     file_ext = 'pcm'
                                 elif audio_format == 'mp3-16k' or audio_format == 'mp3-48k':
                                     file_ext = 'mp3'
-                                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                                if voice_save_dir == '':
+                                    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                                else:
+                                    file_path = os.path.join(voice_save_dir, f'{file_count + 1}.{file_ext}')
                                 with open(file_path, 'wb') as f:
                                     f.write(response3.content)
                                 if sys.platform == 'win32':
-                                    print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                                    if voice_save_dir == '':
+                                        print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                                    else:
+                                        print("语音下载完成，保存路径是:----->", file_path)
                                 else:
-                                    print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                                    if voice_save_dir == '':
+                                        print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                                    else:
+                                        print("语音下载完成，保存路径是:----->", file_path)
                                 break
                             elif rj['tasks_info'][0]['task_status'] == 'Running':
                                 time.sleep(10)
@@ -1267,7 +1294,10 @@ def tts_baidu(aue, per, pit, spd, text, vol):
             content_type = response1.headers['Content-Type']
             if aue in file_ext_dict and content_type == content_type_dict[aue]:
                 file_ext = file_ext_dict[aue]
-                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                if voice_save_dir == '':
+                    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                else:
+                    file_path = os.path.join(voice_save_dir, f'{file_count + 1}.{file_ext}')
                 with open(file_path, 'wb') as f:
                     f.write(response1.content)
             else:
@@ -1276,15 +1306,19 @@ def tts_baidu(aue, per, pit, spd, text, vol):
         print('百度语音合成请求失败，请稍后重试')
 
 
-def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity):
+def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, voice_save_dir):
     client = AcsClient(
         env_data['ALIYUN_ACCESSKEY_ID'],
         env_data['ALIYUN_ACCESSKEY_SECRET'],
         "cn-shanghai"
     )
     file_count = 0
-    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
-        file_count += len(files)
+    if voice_save_dir == '':
+        for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+            file_count += len(files)
+    else:
+        for root, dirs, files in os.walk(voice_save_dir):
+            file_count += len(files)
     token = ''
     is_short = True
     if len(text) > 100:
@@ -1365,13 +1399,22 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
                 content_type = response.headers['Content-Type']
                 if content_type == 'audio/mpeg':
                     file_ext = aue
-                    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                    if voice_save_dir == '':
+                        file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                    else:
+                        file_path = os.path.join(voice_save_dir, f'{file_count + 1}.{file_ext}')
                     with open(file_path, 'wb') as f:
                         f.write(response.content)
                     if sys.platform == 'win32':
-                        print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                        if voice_save_dir == '':
+                            print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                        else:
+                            print("语音下载完成，保存路径是:----->", file_path)
                     else:
-                        print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                        if voice_save_dir == '':
+                            print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                        else:
+                            print("语音下载完成，保存路径是:----->", file_path)
                 elif content_type == 'application/json':
                     print("语音合成失败，错误原因是:----->", f"{response.json()['message']}")
             else:
@@ -1393,13 +1436,22 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
                             speech_url = rj["data"]["audio_address"]
                             response2 = requests.get(speech_url)
                             file_ext = aue
-                            file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                            if voice_save_dir == '':
+                                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                            else:
+                                file_path = os.path.join(voice_save_dir, f'{file_count + 1}.{file_ext}')
                             with open(file_path, 'wb') as f:
                                 f.write(response2.content)
                             if sys.platform == 'win32':
-                                print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                                if voice_save_dir == '':
+                                    print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                                else:
+                                    print("语音下载完成，保存路径是:----->", file_path)
                             else:
-                                print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                                if voice_save_dir == '':
+                                    print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                                else:
+                                    print("语音下载完成，保存路径是:----->", file_path)
                             break
                         else:
                             time.sleep(10)
@@ -1410,13 +1462,17 @@ def tts_ali(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensit
                 print("阿里长文本转语音任务创建失败，原因是:----->", f"{response.json()['message']}")
 
 
-def tts_huawei(aue, per, pit, spd, text, vol):
+def tts_huawei(aue, per, pit, spd, text, vol, voice_save_dir):
     if len(text) > 100:
         print("文本过长")
     else:
         file_count = 0
-        for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
-            file_count += len(files)
+        if voice_save_dir == '':
+            for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+                file_count += len(files)
+        else:
+            for root, dirs, files in os.walk(voice_save_dir):
+                file_count += len(files)
         token = ''
         get_access_token_url = vop.huawei['get_access_token_url']
         tts_url = vop.huawei['tts_url']
@@ -1472,7 +1528,10 @@ def tts_huawei(aue, per, pit, spd, text, vol):
                 data = rj['result']['data']
                 audio_data = base64.b64decode(data)
                 file_ext = aue
-                file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                if voice_save_dir == '':
+                    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+                else:
+                    file_path = os.path.join(voice_save_dir, f'{file_count + 1}.{file_ext}')
                 if file_ext == 'mp3':
                     with open(file_path, 'wb') as f:
                         f.write(audio_data)
@@ -1483,9 +1542,15 @@ def tts_huawei(aue, per, pit, spd, text, vol):
                         f.setframerate(16000)
                         f.writeframes(audio_data)
                 if sys.platform == 'win32':
-                    print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                    if voice_save_dir == '':
+                        print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+                    else:
+                        print("语音下载完成，保存路径是:----->", file_path)
                 else:
-                    print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                    if voice_save_dir == '':
+                        print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+                    else:
+                        print("语音下载完成，保存路径是:----->", file_path)
             else:
                 print("错误返回值是:", f"{response_tts.json()}")
                 print("华为语音合成失败，原因是----->", rj['error_msg'])
@@ -1493,17 +1558,22 @@ def tts_huawei(aue, per, pit, spd, text, vol):
             print("华为鉴权失败,请重试")
 
 
-def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, voice_role_play):
+def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intensity, voice_role_play, voice_save_dir):
     pits = ['x-low', 'low', 'default', 'medium', 'high', 'x-high']
     real_pit = pits[int(pit) - 1]
     print("微软文本转语音任务创建成功，任务完成后自动下载，你可以在此期间做其他的事情。")
     file_count = 0
-    for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
-        file_count += len(files)
+    file_ext = aue
+    if voice_save_dir == '':
+        for root, dirs, files in os.walk(novel_tweets_generator_audio_folder):
+            file_count += len(files)
+        file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
+    else:
+        for root, dirs, files in os.walk(voice_save_dir):
+            file_count += len(files)
+        file_path = os.path.join(voice_save_dir, f'{file_count + 1}.{file_ext}')
     speech_key = env_data['AZURE_SPEECH_KEY']
     service_region = "eastus"
-    file_ext = aue
-    file_path = os.path.join(novel_tweets_generator_audio_folder, f'{file_count + 1}.{file_ext}')
     if sys.platform == 'win32':
         file_path = file_path.replace("/", "\\")
     speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
@@ -1547,9 +1617,15 @@ def tts_azure(text, spd, pit, vol, per, aue, voice_emotion, voice_emotion_intens
     # Check result
     if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
         if sys.platform == 'win32':
-            print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path.replace('/', '\\'))
+            if voice_save_dir == '':
+                print("语音下载完成，保存路径是:----->", os.getcwd() + "\\" + file_path)
+            else:
+                print("语音下载完成，保存路径是:----->", file_path)
         else:
-            print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+            if voice_save_dir == '':
+                print("语音下载完成，保存路径是:----->", os.getcwd() + "/" + file_path)
+            else:
+                print("语音下载完成，保存路径是:----->", file_path)
     elif result.reason == speechsdk.ResultReason.Canceled:
         cancellation_details = result.cancellation_details
         print("微软语音合成取消: {}".format(cancellation_details.reason))
@@ -1620,6 +1696,18 @@ def change_voice_role(tts_type, role):
             return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 
+def show_or_hide(free, pay):
+    if free:
+        global env_data
+        env_data = fvp.env_data
+        set_key(env_path, 'IS_FREE', 'True')
+        return gr.update(visible=False)
+    elif pay:
+        set_key(env_path, 'IS_FREE', 'False')
+        refresh_active_data()
+        return gr.update(visible=True)
+
+
 class Script(scripts.Script):
 
     def title(self):
@@ -1630,7 +1718,10 @@ class Script(scripts.Script):
 
     def ui(self, is_img2img):
         gr.HTML('<a href="{}"><font color=blue>！！！点击这里了解如何使用该脚本！！！</font></a>'.format(instructions))
-        with gr.Accordion(label="注册和激活", open=True):
+        with gr.Row():
+            cb_free = gr.Checkbox(label="免费模式", value=True if is_free == 'True' else False)
+            cb_pay = gr.Checkbox(label="付费模式", value=True if is_free != 'True' else False)
+        with gr.Accordion(label="注册和激活", open=True, visible=True if is_free != 'True' else False) as register_active:
             active_code_input = gr.Textbox(label='激活码', placeholder='请在这里输入激活码，激活后该行会隐藏，首次留空激活会给六小时的免费试用',
                                            visible=is_expired)
             if userid != '' and active_code != '':
@@ -1643,7 +1734,7 @@ class Script(scripts.Script):
             else:
                 active_info_text = os.environ.get('ACTIVE_INFO')
             gr.HTML('激活信息是：')
-            with gr.Row():
+            with gr.Row().style(equal_height=True):
                 with gr.Column(scale=16):
                     active_info = gr.Textbox(value=active_info_text, interactive=False, show_label=False)
                 with gr.Column(scale=1, min_width=5):
@@ -1660,6 +1751,10 @@ class Script(scripts.Script):
 
             refresh_active_info.click(update_active_info, outputs=[active_info, active_code_input, ensure_sign_up])
             ensure_sign_up.click(sign_up, inputs=[active_code_input], outputs=[active_info])
+        cb_free.change(change_state, inputs=[cb_free], outputs=[cb_pay])
+        cb_pay.change(change_state, inputs=[cb_pay], outputs=[cb_free])
+        cb_free.change(show_or_hide, inputs=[cb_free, cb_pay], outputs=[register_active])
+        cb_pay.change(show_or_hide, inputs=[cb_free, cb_pay], outputs=[register_active])
         with gr.Accordion(label="基础属性", open=True):
             with gr.Column(variant='panel'):
                 with gr.Accordion(label="1. 默认提示词相关", open=True):
@@ -1795,10 +1890,10 @@ class Script(scripts.Script):
 
                     deal_with_ai.click(set_un_clickable, outputs=[deal_with_ai])
                     deal_with_ai.click(ai_process_article,
-                                       inputs=[ai_prompt, original_article, scene_number, api_cb, cb_use_proxy, ai_models],
+                                       inputs=[ai_prompt, original_article, scene_number, api_cb, cb_use_proxy, ai_models, cb_free],
                                        outputs=[ai_article, deal_with_ai])
                     btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
-                    btn_save_ai_prompts.click(save_prompts, inputs=[ai_article], outputs=[btn_save_ai_prompts])
+                    btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_free], outputs=[btn_save_ai_prompts])
                 with gr.Accordion(label="3.2 原文转语音"):
                     voice_radio = gr.Radio(['百度', '阿里', '华为', '微软'], label="3.2.1 语音引擎", info='请选择一个语音合成引擎，默认为百度',
                                            value='百度')
@@ -1824,15 +1919,17 @@ class Script(scripts.Script):
                     voice_radio.change(change_tts, inputs=[voice_radio],
                                        outputs=[voice_role, audition, voice_speed, voice_pit, voice_vol, output_type, voice_emotion,
                                                 voice_emotion_intensity])
+                    voice_save_dir = gr.Textbox(label='语音保存路径',
+                                                placeholder='默认为空时保存在outputs/novel_tweets_generator/audio路径下的按序号递增的文件夹下')
                     btn_txt_to_voice = gr.Button(value="原文转语音")
                     btn_txt_to_voice.click(set_un_clickable, outputs=[btn_txt_to_voice])
                     btn_txt_to_voice.click(tts_fun,
                                            inputs=[original_article, voice_speed, voice_pit, voice_vol, voice_role, output_type, voice_radio,
-                                                   voice_emotion, voice_emotion_intensity, role_play],
+                                                   voice_emotion, voice_emotion_intensity, role_play, voice_save_dir, cb_free],
                                            outputs=[btn_txt_to_voice])
                 prompts_folder = gr.Textbox(
                     label="4. 输入包含提示词文本文件的文件夹路径",
-                    info="默认值为空时处理outputs/novel_tweets_generator/prompts文件夹下的最后一个文件夹",
+                    placeholder="默认值为空时处理outputs/novel_tweets_generator/prompts文件夹下的最后一个文件夹",
                     lines=1,
                     max_lines=2,
                     value=""
@@ -1851,6 +1948,45 @@ class Script(scripts.Script):
                     cb_w.select(change_selected, inputs=[cb_w], outputs=[cb_h, cb_custom])
                     cb_custom.select(change_selected, inputs=[cb_custom], outputs=[cb_h, cb_w])
                 gr.HTML("")
+        with gr.Accordion(label='合成剪映草稿', open=True, visible=False):
+            with gr.Column():
+                env_jy = os.environ.get('JIANYING_DRAFT_FOLDER')
+                with gr.Row().style(equal_height=True) as jydf:
+                    with gr.Column(scale=10):
+                        jianying_draft_folder = gr.Textbox(show_label=False,
+                                                           placeholder='剪映草稿的文件夹地址,填写后合成剪映草稿后会自动在剪映中出现,仅需设置一次',
+                                                           value=env_jy)
+                    with gr.Column(scale=1, min_width=20, visible=True if env_jy == '' else False) as set_view:
+                        set_jydf_btn = gr.Button(value='设置')
+
+                    def set_jydf(folder_path):
+                        has_set = set_key(env_path, 'JIANYING_DRAFT_FOLDER', folder_path)
+                        if has_set:
+                            return gr.update(visible=False)
+                        else:
+                            return gr.update(visible=True)
+
+                    def check(path):
+                        if path != env_jy:
+                            return gr.update(visible=True)
+                        else:
+                            return gr.update(visible=False)
+
+                    set_jydf_btn.click(set_jydf, inputs=[jianying_draft_folder], outputs=[set_view])
+                    jianying_draft_folder.change(check, inputs=[jianying_draft_folder], outputs=[set_view])
+                draft_images = gr.Textbox(label='图片文件夹路径',
+                                          placeholder='默认为空时处理outputs/novel_tweets_generator/images/当前日期/最后一个文件夹/original_images/下的图片文件')
+                key_frames_type = gr.Dropdown(
+                    label='图片关键帧类型',
+                    choices=['0.无', '1.从上到下', '2.从下到上', '3.从左到右', '4.从右到左', '5.自动判断', '6.随机'],
+                    value='0.无'
+                )
+                images_index = gr.Textbox(label='每个场景选择的第几张图片,格式为1@图片关键帧类型序号,2,2,3,4......',
+                                          placeholder='每个场景只有一个图片并且不需要指定关键帧类型的时候可以留空，如果每个场景多张图片留空的时候默认选择第一张，不指定关键帧的时候默认无关键帧')
+
+                with gr.Row(visible=False):
+                    random_animation_in = gr.Checkbox(label='为每张图片启用随机入场动画', info='随机入场动画')
+                    random_animation_out = gr.Checkbox(label='为每张图片启用随机出场动画', info='随机出场动画')
 
         with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True, visible=False):
             with gr.Column(variant='panel', visible=False):
@@ -1903,7 +2039,7 @@ class Script(scripts.Script):
                 ai_prompt, scene_number, deal_with_ai, ai_article, preset_character, api_cb, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
                 voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images,
-                custom_preset_title, custom_preset, add_preset, ai_models]
+                custom_preset_title, custom_preset, add_preset, ai_models, voice_save_dir, cb_free, cb_pay, register_active]
 
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or,
             text_watermark, text_watermark_font, text_watermark_target,
@@ -1913,7 +2049,7 @@ class Script(scripts.Script):
             tb_save_ai_prompts_folder_path,
             cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition,
             btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images, custom_preset_title, custom_preset,
-            add_preset, ai_models):
+            add_preset, ai_models, voice_save_dir, cb_free, cb_pay, register_active):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True
