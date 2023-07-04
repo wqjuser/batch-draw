@@ -8,3 +8,5 @@ supabase
 psutil
 WMI
 ntplib
+distro
+mutagen
