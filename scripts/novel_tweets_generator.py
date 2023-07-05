@@ -2,6 +2,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import random
 import re
@@ -60,7 +61,7 @@ def process_float_tag(tag):
 
 
 def process_boolean_tag(tag):
-    return True if (tag == "true") else False
+    return True if (tag == "True") else False
 
 
 def chang_time_zone(utc_time_str):
@@ -762,7 +763,7 @@ def add_watermark(need_add_watermark_images, need_add_watermark_images1, new_ima
     tmp_images = []
     tmp_images1 = []
     watered_images = []
-    font = ImageFont.truetype(text_font, size=int(text_watermark_size))
+    font = ImageFont.Truetype(text_font, size=int(text_watermark_size))
     text_width, text_height = font.getsize(text_watermark_content)
     if int(text_watermark_target) == 1:
         need_add_watermark_images = new_images.copy()
@@ -1872,13 +1873,24 @@ def generate_video_json(duration, file_path, height, width):
     return json.loads(json.dumps(json_data))
 
 
-def generate_tracks_json(images_number, apply_all, key_frames_type, images_index, image_paths, videos_ids):
+def generate_tracks_image_json(images_number, apply_all, key_frames_type, images_index, image_paths, videos_ids, voice_durations):
     json_data = {
         "attribute": 0,
         "flag": 0,
         "id": batch_draw_utils.generate_draft_id(True),
-        "segments": generate_segments_json(images_number, apply_all, key_frames_type, images_index, image_paths, videos_ids),
+        "segments": generate_segments_image_json(images_number, apply_all, key_frames_type, images_index, image_paths, videos_ids, voice_durations),
         "type": "video"
+    }
+    return json_data
+
+
+def generate_tracks_audio_json(voice_files, voice_material_ids, voice_durations):
+    json_data = {
+        "attribute": 0,
+        "flag": 0,
+        "id": batch_draw_utils.generate_draft_id(True),
+        "segments": generate_segments_audio_json(voice_files, voice_material_ids, voice_durations),
+        "type": "audio"
     }
     return json_data
 
@@ -1971,7 +1983,7 @@ def generate_common_keyframes_json():
     return json_data
 
 
-def generate_segments_json(images_number: int, apply_all, key_frames_type, images_index, image_paths, videos_ids):
+def generate_segments_image_json(images_number: int, apply_all, key_frames_type, images_index, image_paths, videos_ids, voice_durations):
     segments = [None] * images_number
     frames_type = process_string(images_index, images_number, key_frames_type, apply_all)
     json_data = {
@@ -2053,6 +2065,11 @@ def generate_segments_json(images_number: int, apply_all, key_frames_type, image
         common_keyframes_json_2['id'] = f"{batch_draw_utils.generate_draft_id(True)}"
         common_keyframes_json_2['keyframe_list'][0]['id'] = f"{batch_draw_utils.generate_draft_id(True)}"
         common_keyframes_json_2['keyframe_list'][1]['id'] = f"{batch_draw_utils.generate_draft_id(True)}"
+        if len(voice_durations) == images_number:
+            segment['source_timerange']['duration'] = voice_durations[i]
+            segment['target_timerange']['duration'] = voice_durations[i]
+            common_keyframes_json_1['keyframe_list'][1]['time_offset'] = voice_durations[i]
+            common_keyframes_json_2['keyframe_list'][1]['time_offset'] = voice_durations[i]
 
         def update_keyframes(scale_x, scale_y, transform_x, transform_y, values_0, values_1):
             segment['clip']['scale']['x'] = scale_x
@@ -2143,6 +2160,66 @@ def generate_segments_json(images_number: int, apply_all, key_frames_type, image
     return segments
 
 
+def generate_segments_audio_json(voice_files, voice_material_ids, voice_durations):
+    segments = [None] * len(voice_files)
+    json_data = {
+        "cartoon": False,
+        "clip": None,
+        "common_keyframes": [],
+        "enable_adjust": False,
+        "enable_color_curves": True,
+        "enable_color_wheels": True,
+        "enable_lut": False,
+        "enable_smart_color_adjust": False,
+        "extra_material_refs": [
+            "97456769-71DE-48dc-8F84-6BFF6C80E3D5",
+            "51C31237-B4B1-4889-99F7-DCA2BB3B6E78",
+            "6A493AEF-8598-4d7f-B672-E2795B5AEC33"
+        ],
+        "group_id": "",
+        "hdr_settings": None,
+        "id": "53B23239-CC1E-4c20-981B-4E52DC85B2EA",
+        "intensifies_audio": False,
+        "is_placeholder": False,
+        "is_tone_modify": False,
+        "keyframe_refs": [],
+        "last_nonzero_volume": 1.0,
+        "material_id": "3C9142E3-3DE0-4b9a-938A-FF82B9D41FEE",
+        "render_index": 0,
+        "reverse": False,
+        "source_timerange": {
+            "duration": 8150000,
+            "start": 0
+        },
+        "speed": 1.0,
+        "target_timerange": {
+            "duration": 8150000,
+            "start": 0
+        },
+        "template_id": "",
+        "template_scene": "default",
+        "track_attribute": 0,
+        "track_render_index": 0,
+        "uniform_scale": None,
+        "visible": True,
+        "volume": 1.0
+    }
+    accumulated_duration = 0
+    for i in range(len(voice_files)):
+        segment = copy.deepcopy(json_data)
+        segment['id'] = f"{batch_draw_utils.generate_draft_id(True)}"
+        segment['material_id'] = voice_material_ids[i]
+        for k in range(3):
+            segment['extra_material_refs'][k] = f"{batch_draw_utils.generate_draft_id(True)}"
+        segment['source_timerange']['duration'] = voice_durations[i]
+        segment['source_timerange']['start'] = 0
+        segment['target_timerange']['duration'] = voice_durations[i]
+        segment['target_timerange']['start'] = accumulated_duration
+        segments[i] = segment
+        accumulated_duration += voice_durations[i]
+    return segments
+
+
 def generate_audio_json(duration, file_path, extra_info):
     json_data = {
         "create_time": 0,
@@ -2206,7 +2283,8 @@ def get_wav_duration_us(wav_path):
         frames = wav_file.getnframes()
         rate = wav_file.getframerate()
         duration_us = (frames / float(rate)) * 1_000_000
-    return duration_us
+
+    return math.ceil(duration_us)
 
 
 def get_sorted_audio_files(folder_path):
@@ -2256,8 +2334,43 @@ def generate_canvas_json(image_number: int):
     return canvases
 
 
+def generate_audios_json():
+    json_data = {
+        "app_id": 0,
+        "category_id": "local",
+        "category_name": "local_music",
+        "check_flag": 1,
+        "duration": 108083333,
+        "effect_id": "",
+        "formula_id": "",
+        "id": "",
+        "intensifies_path": "",
+        "local_material_id": "",
+        "music_id": "",
+        "name": "",
+        "path": "",
+        "request_id": "",
+        "resource_id": "",
+        "source_platform": 0,
+        "team_id": "",
+        "text_id": "",
+        "tone_category_id": "",
+        "tone_category_name": "",
+        "tone_effect_id": "",
+        "tone_effect_name": "",
+        "tone_speaker": "",
+        "tone_type": "",
+        "type": "extract_music",
+        "video_id": "",
+        "wave_points": []
+    }
+    return json_data
+
+
 def update_and_copy_meta_info_file(source_folder, target_folder, file_name, images_folder, key_frames_type, images_index, cb_input_audio,
                                    tb_audio_path, apply_all):
+    voice_files = []
+    voice_durations = []
     images_index_str = images_index
     if images_folder == '':
         split_str = '\\' if sys.platform == 'win32' else '/'
@@ -2276,7 +2389,40 @@ def update_and_copy_meta_info_file(source_folder, target_folder, file_name, imag
     source_file_path = os.path.join(source_folder, file_name)
     with open(source_file_path, 'r') as f:
         meta_info_data = json.load(f)
+
     if file_name == 'draft_meta_info.json':
+        if cb_input_audio:
+            if tb_audio_path == '':
+                audio_path = os.getcwd() + '/' + novel_tweets_generator_audio_folder
+                if sys.platform == 'win32':
+                    audio_path = audio_path.replace('/', '\\')
+                last_file = get_last_file_path(audio_path)
+                if sys.platform == 'win32':
+                    last_file = last_file.replace('/', '\\')
+                voice_files.append(last_file)
+                duration = generate_audio_json_content(last_file, meta_info_data)
+                voice_durations.append(duration)
+            else:
+                if os.path.isfile(tb_audio_path):
+                    voice_files.append(tb_audio_path)
+                    duration = generate_audio_json_content(tb_audio_path, meta_info_data)
+                    voice_durations.append(duration)
+                elif os.path.isdir(tb_audio_path):
+                    audio_files = get_sorted_audio_files(tb_audio_path)
+                    voice_files = audio_files
+                    meta_info_data['draft_materials'][1]['value'] = [None] * len(audio_files)
+                    for i in range(len(audio_files)):
+                        audio_file = audio_files[i]
+                        file_extension = os.path.splitext(audio_file)[1]
+                        if file_extension == '.mp3':
+                            duration = get_mp3_duration_us(audio_file)
+                        elif file_extension == '.wav':
+                            duration = get_wav_duration_us(audio_file)
+                        else:
+                            duration = 0
+                        format_date = current_date.strftime("%Y%m%d")
+                        voice_durations.append(duration)
+                        meta_info_data['draft_materials'][1]['value'][i] = generate_audio_json(duration, audio_file, f'提取音频{format_date}-{i + 1}')
         crop_and_save_image(images_paths[0], target_folder)
         meta_info_data['draft_fold_path'] = target_folder
         meta_info_data['draft_id'] = batch_draw_utils.generate_draft_id(True)
@@ -2287,8 +2433,22 @@ def update_and_copy_meta_info_file(source_folder, target_folder, file_name, imag
         meta_info_data['draft_materials'][0]['value'] = [None] * len(images_paths)
         for i in range(images_number):
             width, height = get_image_dimensions(images_paths[i])
-            meta_info_data['draft_materials'][0]['value'][i] = generate_photo_json(3000000, images_paths[i], height, width)
-        meta_info_data['tm_duration'] = 3000000 * images_number
+            if len(voice_files) == images_number:
+                meta_info_data['draft_materials'][0]['value'][i] = generate_photo_json(voice_durations[i], images_paths[i], height, width)
+            else:
+                meta_info_data['draft_materials'][0]['value'][i] = generate_photo_json(3000000, images_paths[i], height, width)
+        if len(voice_files) != images_number:
+            meta_info_data['tm_duration'] = 3000000 * images_number
+        else:
+            total_duration = 0
+            for i in range(len(voice_durations)):
+                total_duration += voice_durations[i]
+            meta_info_data['tm_duration'] = total_duration
+
+    elif file_name == 'draft_content.json':
+        voice_material_ids = []
+        format_date = current_date.strftime("%Y%m%d")
+        meta_info_data['tracks'] = [None] * 1
         if cb_input_audio:
             if tb_audio_path == '':
                 audio_path = os.getcwd() + '/' + novel_tweets_generator_audio_folder
@@ -2297,28 +2457,60 @@ def update_and_copy_meta_info_file(source_folder, target_folder, file_name, imag
                 last_file = get_last_file_path(audio_path)
                 if sys.platform == 'win32':
                     last_file = last_file.replace('/', '\\')
-                generate_audio_json_content(last_file, meta_info_data)
+                voice_files.append(last_file)
+                file_extension = os.path.splitext(voice_files[0])[1]
+                if file_extension == '.mp3':
+                    duration = get_mp3_duration_us(voice_files[0])
+                elif file_extension == '.wav':
+                    duration = get_wav_duration_us(voice_files[0])
+                else:
+                    duration = 0
+                format_date = current_date.strftime("%Y%m%d")
+                voice_durations.append(duration)
             else:
                 if os.path.isfile(tb_audio_path):
-                    generate_audio_json_content(tb_audio_path, meta_info_data)
+                    voice_files.append(tb_audio_path)
+                    file_extension = os.path.splitext(voice_files[0])[1]
+                    if file_extension == '.mp3':
+                        duration = get_mp3_duration_us(voice_files[0])
+                    elif file_extension == '.wav':
+                        duration = get_wav_duration_us(voice_files[0])
+                    else:
+                        duration = 0
+                    voice_durations.append(duration)
                 elif os.path.isdir(tb_audio_path):
                     audio_files = get_sorted_audio_files(tb_audio_path)
-                    meta_info_data['draft_materials'][1]['value'] = [None] * len(audio_files)
+                    voice_files = audio_files
                     for i in range(len(audio_files)):
                         audio_file = audio_files[i]
                         file_extension = os.path.splitext(audio_file)[1]
                         if file_extension == '.mp3':
                             duration = get_mp3_duration_us(audio_file)
                         elif file_extension == '.wav':
-                            duration = get_mp3_duration_us(audio_file)
+                            duration = get_wav_duration_us(audio_file)
                         else:
                             duration = 0
                         format_date = current_date.strftime("%Y%m%d")
-                        meta_info_data['draft_materials'][1]['value'][i] = generate_audio_json(duration, audio_file, f'提取音频{format_date}-{i + 1}')
-
-    elif file_name == 'draft_content.json':
+                        voice_durations.append(duration)
+            if len(voice_files) == images_number:
+                meta_info_data['tracks'] = [None] * 2
+                meta_info_data['materials']['audios'] = [None] * len(voice_files)
+                total_duration = 0
+                for i in range(len(voice_files)):
+                    audio_json = generate_audios_json()
+                    audio_json['id'] = batch_draw_utils.generate_draft_id(True)
+                    audio_json['duration'] = voice_durations[i]
+                    audio_json['music_id'] = batch_draw_utils.generate_draft_id(False)
+                    audio_json['name'] = f'提取音频{format_date}-{i + 1}'
+                    audio_json['path'] = voice_files[i]
+                    voice_material_ids.append(audio_json['id'])
+                    meta_info_data['materials']['audios'][i] = audio_json
+                    total_duration += voice_durations[i]
+                meta_info_data['duration'] = total_duration
+                meta_info_data['tracks'][1] = generate_tracks_audio_json(voice_files, voice_material_ids, voice_durations)
+            else:
+                meta_info_data['duration'] = 3000000 * images_number
         meta_info_data['canvas_config']['ratio'] = '4:3'
-        meta_info_data['duration'] = 3000000 * images_number
         meta_info_data['id'] = f"{batch_draw_utils.generate_draft_id(True)}"
         meta_info_data['last_modified_platform']['device_id'] = f"{batch_draw_utils.get_device_id()}"
         meta_info_data['last_modified_platform']['hard_disk_id'] = f"{batch_draw_utils.get_hard_disk_id()}"
@@ -2335,7 +2527,6 @@ def update_and_copy_meta_info_file(source_folder, target_folder, file_name, imag
         meta_info_data['materials']['sound_channel_mappings'] = [None] * images_number
         meta_info_data['materials']['speeds'] = [None] * images_number
 
-        meta_info_data['tracks'] = [None] * 1
         sound_channel_mapping_json = {
             "audio_channel_mapping": 0,
             "id": "",
@@ -2359,8 +2550,8 @@ def update_and_copy_meta_info_file(source_folder, target_folder, file_name, imag
             meta_info_data['materials']['speeds'][i] = speed_json
             meta_info_data['materials']['videos'][i] = generate_video_json(0, image_path.replace('\\', '/'), height, width)
             videos_ids.append(meta_info_data['materials']['videos'][i]['id'])
-
-        meta_info_data['tracks'][0] = generate_tracks_json(images_number, apply_all, key_frames_type, images_index_str, images_paths, videos_ids)
+        meta_info_data['tracks'][0] = generate_tracks_image_json(images_number, apply_all, key_frames_type, images_index_str, images_paths,
+                                                                 videos_ids, voice_durations)
 
     os.makedirs(target_folder, exist_ok=True)
     target_file_path = os.path.join(target_folder, file_name)
@@ -2417,6 +2608,7 @@ def generate_audio_json_content(file_path, meta_info_data):
     format_date = current_date.strftime("%Y%m%d")
     meta_info_data['draft_materials'][1]['value'] = [None] * 1
     meta_info_data['draft_materials'][1]['value'][0] = generate_audio_json(duration, file_path, f'提取音频{format_date}-1')
+    return duration
 
 
 def copy_files(source_folder, target_folder, file_names):
@@ -2748,7 +2940,7 @@ class Script(scripts.Script):
                 with gr.Row(visible=False):
                     random_animation_in = gr.Checkbox(label='为每张图片启用随机入场动画', info='随机入场动画')
                     random_animation_out = gr.Checkbox(label='为每张图片启用随机出场动画', info='随机出场动画')
-                cb_input_audio = gr.Checkbox(label='导入音频(仅仅将音频导入到草稿中，音画同步仍需要手动操作 【音画同步正在努力中】)')
+                cb_input_audio = gr.Checkbox(label='导入音频(当音频数量和图片数量一致的时候将会自动进行音画同步操作)')
                 tb_audio_path = gr.Textbox(show_label=False,
                                            placeholder='默认为空时路径为outputs/novel_tweets_generator/audio下面的最后一个音频文件,如果输入了文件夹地址,将会导入该文件夹地址下的所有音频文件',
                                            visible=False)
