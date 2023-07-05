@@ -46,6 +46,7 @@ import ntplib
 import shutil
 import glob
 from mutagen.mp3 import MP3, HeaderNotFoundError
+import zipfile
 
 
 def process_string_tag(tag):
@@ -1137,6 +1138,13 @@ def change_state(is_checked):
         return gr.update(value=False)
     else:
         return gr.update(value=True)
+
+
+def change_state_2(is_checked, is_checked_2):
+    if is_checked:
+        return gr.update(value=True), gr.update(value=False)
+    else:
+        return gr.update(value=False), gr.update(value=False)
 
 
 def change_ai_model(api, web):
@@ -2622,7 +2630,23 @@ def copy_files(source_folder, target_folder, file_names):
             print(f"复制文件 '{file_name}' 时出错: {e}")
 
 
-def composite_draft(images_folder, key_frames_type, images_index, cb_input_audio, tb_audio_path, apply_all):
+def zip_folder(folder_path, delete_original=False):
+    parent_folder_path = os.path.dirname(folder_path)
+    zip_file_name = os.path.basename(folder_path) + '.zip'
+    zip_file_path = os.path.join(parent_folder_path, zip_file_name)
+
+    with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                relative_path = os.path.relpath(os.path.join(root, file), folder_path)
+                zipf.write(os.path.join(root, file), arcname=relative_path)
+
+    if delete_original:
+        shutil.rmtree(folder_path)
+
+
+def composite_draft(images_folder, key_frames_type, images_index, cb_input_audio, tb_audio_path, apply_all, cb_zip_draft_keep_raw,
+                    cb_zip_draft_delete_raw):
     jy_draft_folder = os.environ.get('JIANYING_DRAFT_FOLDER')
     if jy_draft_folder == '':
         jy_draft_folder = os.getcwd() + '/' + novel_tweets_generator_draft_folder
@@ -2642,6 +2666,12 @@ def composite_draft(images_folder, key_frames_type, images_index, cb_input_audio
     update_and_copy_meta_info_file(source_folder, current_draft_folder, 'draft_content.json', images_folder, key_frames_type, images_index,
                                    cb_input_audio, tb_audio_path, apply_all)
     copy_files(source_folder, current_draft_folder, file_names)
+    if cb_zip_draft_delete_raw or cb_zip_draft_keep_raw:
+        if cb_zip_draft_keep_raw:
+            zip_folder(current_draft_folder)
+        elif cb_zip_draft_delete_raw:
+            zip_folder(current_draft_folder, True)
+
     print('剪映草稿合成完毕')
     return gr.update(interactive=True)
 
@@ -2693,10 +2723,10 @@ class Script(scripts.Script):
                 refresh_active_info.click(update_active_info, outputs=[active_info, active_code_input, ensure_sign_up])
                 ensure_sign_up.click(sign_up, inputs=[active_code_input], outputs=[active_info])
 
-                cb_free.change(change_state, inputs=[cb_free], outputs=[cb_pay])
-                cb_pay.change(change_state, inputs=[cb_pay], outputs=[cb_free])
-                cb_free.change(show_or_hide, inputs=[cb_free, cb_pay], outputs=[register_active])
-                cb_pay.change(show_or_hide, inputs=[cb_free, cb_pay], outputs=[register_active])
+        cb_free.select(change_state, inputs=[cb_free], outputs=[cb_pay])
+        cb_pay.select(change_state, inputs=[cb_pay], outputs=[cb_free])
+        cb_free.change(show_or_hide, inputs=[cb_free, cb_pay], outputs=[register_active])
+        cb_pay.change(show_or_hide, inputs=[cb_free, cb_pay], outputs=[register_active])
 
         with gr.Accordion(label="基础属性", open=True):
             with gr.Column(variant='panel'):
@@ -2952,11 +2982,19 @@ class Script(scripts.Script):
                         return gr.update(visible=False)
 
                 cb_input_audio.change(show_audio_path, inputs=[cb_input_audio], outputs=[tb_audio_path])
-
+                with gr.Accordion(label="压缩草稿(用于方便云端下载草稿)", open=False):
+                    with gr.Row():
+                        cb_zip_draft_keep_raw = gr.Checkbox(label="合成草稿后压缩草稿文件(保留原草稿文件)")
+                        cb_zip_draft_delete_raw = gr.Checkbox(label="合成草稿后压缩草稿文件(删除原草稿文件)")
+                        cb_zip_draft_keep_raw.select(change_state_2, inputs=[cb_zip_draft_keep_raw, cb_zip_draft_delete_raw],
+                                                     outputs=[cb_zip_draft_keep_raw, cb_zip_draft_delete_raw])
+                        cb_zip_draft_delete_raw.select(change_state_2, inputs=[cb_zip_draft_delete_raw, cb_zip_draft_keep_raw],
+                                                       outputs=[cb_zip_draft_delete_raw, cb_zip_draft_keep_raw])
                 start_synthesis = gr.Button(value='合成剪映草稿')
                 start_synthesis.click(set_un_clickable, outputs=[start_synthesis])
                 start_synthesis.click(composite_draft, show_progress=True,
-                                      inputs=[draft_images, key_frames_type, images_index, cb_input_audio, tb_audio_path, cb_apply_all],
+                                      inputs=[draft_images, key_frames_type, images_index, cb_input_audio, tb_audio_path, cb_apply_all,
+                                              cb_zip_draft_keep_raw, cb_zip_draft_delete_raw],
                                       outputs=[start_synthesis])
 
         with gr.Accordion(label="去除背景和保留原图(至少选择一项否则文件夹中没有保留生成的图片)", open=True, visible=False):
