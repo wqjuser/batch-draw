@@ -158,6 +158,7 @@ is_free = os.environ.get("IS_FREE")
 realtime = ''
 is_expired = True
 is_valid_params = False
+novel_types = ['原文', '玄幻', '爽文', '科幻', '仙侠', '修真', '甜宠', '悬疑', '都市', '恐怖']
 if is_free == 'True':
     env_data = fvp.env_data
     is_valid_params = fvp.validate_parameters(env_data)
@@ -1002,19 +1003,22 @@ def images_post_processing(custom_font, filenames, frames, original_images, p,
                                                   rows=p.batch_size * p.n_iter)] + processed_images_flattened
 
 
-def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy, ai_model, cb_free):
+def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_proxy, ai_model, cb_free, optimization_article,
+                       need_optimization_novel):
     if not cb_free:
         if compare_time(env_data['EXPIRE_AT']):
             print("脚本已到期")
             return gr.update(value='脚本已到期'), gr.update(interactive=True)
     proxy = None
-    default_pre_prompt = """首先Stable Diffusion是一款利用深度学习的文生图模型，支持通过使用提示词来产生新的图像，描述要包含或省略的元素。 我在这里引入 Stable Diffusion 
+    if need_optimization_novel and optimization_article != '':
+        original_article = optimization_article
+    default_pre_prompt = """我给你一段文字，首先你需要将这段文字改写的更加吸引人，其次Stable Diffusion是一款利用深度学习的文生图模型，支持通过使用提示词来产生新的图像，描述要包含或省略的元素。 我在这里引入 Stable Diffusion 
     算法中的 Prompt 概念，又被称为提示符。 这里的 Prompt 通常可以用来描述图像，他由普通常见的单词构成，最好是可以在数据集来源站点找到的著名标签（比如 Danbooru)。 
     下面我将说明 Prompt 的生成步骤，这里的 Prompt 主要用于描述人物。 在 Prompt 的生成中，你需要通过提示词来描述 人物属性，主题，外表，情绪，衣服，姿势，视角，动作，背景 。 
     用单词或短语甚至自然语言的标签来描述，并不局限于我给你的单词。 然后将你想要的相似的提示词组合在一起，请使用英文半角 , 做分隔符，并将这些按从最重要到最不重要的顺序 排列。  
     人物属性中，1girl 表示你生成了一个女孩，1boy 表示你生成了一个男孩，人数可以多人。 另外注意，Prompt中不能带有-和_。可以有空格和自然语言，但不要太多，单词不能重复。 
     包含人物性别、主题、外表、情绪、衣服、姿势、视角、动作、背景，将这些按从最重要到最不重要的顺序排列,请尝试生成故事分镜的Prompt,细节越多越好。
-    其次你是专业的场景分镜描述专家，我给你一段文字，首先你需要将文字内容改得更加吸引人，然后你需要把修改后的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，
+    现在你是专业的场景分镜描述专家，你需要把你修改后的吸引人的文字分为不同的场景分镜。每个场景必须要细化，要给出人物，时间，地点，
     场景的描述，如果分镜不存在人物就写无人。必须要细化环境描写（天气，周围有些什么等等内容），必须要细化人物描写（人物衣服，衣服样式，衣服颜色，表情，动作，头发，发色等等），
     如果多个分镜中出现的人物是同一个，请统一这个人物的衣服，发色等细节。如果分镜中出现多个人物，还必须要细化每个人物的细节。
     你回答的分镜要加入自己的一些想象，但不能脱离原文太远。你的回答请务必将每个场景的描述转换为单词，并使用多个单词描述场景，每个分镜至少6个单词，如果分镜中出现了人物,请添加人物
@@ -1023,7 +1027,7 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
     例如这一段话：我和袁绍是大学的时候认识的，在一起了三年。毕业的时候袁绍说带我去他家见他爸妈。去之前袁绍说他爸妈很注重礼节。还说别让我太破费。我懂，我都懂......
     于是我提前去了我表哥顾朝澜的酒庄随手拿了几瓶红酒。临走我妈又让我再带几个LV的包包过去，他妈妈应该会喜欢的。我也没多拿就带了两个包，其中一个还是全球限量版。女人哪有不喜欢包的，
     所以我猜袁绍妈妈应该会很开心吧。
-    将它分为四个场景，你可能需要这样回答我：
+    将它分为四个场景，你可能需要这样回答我，注意这里仅仅是可能的回答：
     1. 情侣, (一个女孩和一个男孩:1.5), (女孩黑色的长发:1.2), 微笑, (白色的裙子:1.2), 非常漂亮的面庞, (女孩手挽着一个男孩:1.5), 男孩黑色的短发, (穿着灰色运动装, 
     帅气的脸庞:1.2), 走在大学校园里, 
     2. 餐馆内, 一个女孩, (黑色的长发, 白色的裙子:1.5), 坐在餐桌前, 一个男孩坐在女孩的对面, (黑色的短发, 灰色的外套:1.5), 两个人聊天, 
@@ -1035,10 +1039,10 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
     if ai_prompt != '':
         default_pre_prompt = ai_prompt
     if int(scene_number) != 0:
-        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须将其转换为{int(scene_number)}个场景分镜。你不需要向我解释你转换场景个数和" \
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n必须按照我上面的要求将其转换为{int(scene_number)}个场景分镜。你不需要向我解释你转换场景个数和" \
                                              f"权重的原因，你只用回复场景分镜内容，其他的不要回复，请用中文回答"
     else:
-        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。" \
+        prompt = default_pre_prompt + "\n" + f"内容是：{original_article}\n你需要根据文字内容自己分析可以转换成几个场景分镜。并按照我上面的要求进行文字处理" \
                                              f"你不需要向我解释你转换场景个数和权重的原因，你只用回复场景分镜内容，其他的不要回复，请用中文回答"
     response = ""
     if use_proxy:
@@ -1046,8 +1050,73 @@ def ai_process_article(ai_prompt, original_article, scene_number, api_cb, use_pr
     if api_cb:
         try:
             openai_key = env_data['KEY']
+            can_use_gpt4 = env_data['CAN_USE_GPT_4']
+            if not can_use_gpt4:
+                if ai_model.startswith('gpt-4'):
+                    print(f'抱歉，您目前还不可用gpt4的模型,将自动转换为gpt-3.5模型')
+                    if ai_model == 'gpt-4-0613':
+                        ai_model = 'gpt-3.5-turbo-0613'
+                    elif ai_model == 'gpt-4-32k-0613':
+                        ai_model = 'gpt-3.5-turbo-16k-0613'
             chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None, engine=ai_model,
-                                temperature=0.8)
+                                temperature=0.5)
+            chatbot.reset()
+            response = chatbot.ask(prompt=prompt)
+        except Exception as error:
+            print(f"Error: {error}")
+            response = "抱歉，发生了一些意外，请重试。"
+    else:
+        configs = {
+            "access_token": f"{env_data['ACCESS_TOKEN']}",
+            "disable_history": True
+        }
+        if proxy is not None and proxy != "":
+            configs['proxy'] = proxy.replace('http://', '')
+        try:
+            if env_data['IS_AI_PLUS']:
+                if ai_model != 'gpt-3.5':
+                    configs['model'] = ai_model
+            chatbot = ChatbotV1(config=configs)
+            for data in chatbot.ask(prompt=prompt, auto_continue=True):
+                response = data["message"]
+        except Exception as error:
+            print(f"Error: {error}")
+            response = "抱歉，发生了一些意外，请重试。"
+    response = response.replace('，', ', ')
+    return gr.update(value=response), gr.update(interactive=True)
+
+
+def ai_optimization_novel(original_article, api_cb, use_proxy, ai_model, cb_free, novel_type):
+    if not cb_free:
+        if compare_time(env_data['EXPIRE_AT']):
+            print("脚本已到期")
+            return gr.update(value='脚本已到期'), gr.update(interactive=True)
+    proxy = None
+    if novel_type == '原文':
+        ai_type = '你是最好的小说家，擅长写出能够非常吸引人的小说内容'
+    else:
+        ai_type = f'你是最好的{novel_type}类型的小说家，擅长写出能够非常吸引人的{novel_type}小说内容'
+
+    default_pre_prompt = ai_type + "我给你一段文字，你需要用你的小说家的身份来改写这段文字使其内容更能吸引读者"
+    prompt = default_pre_prompt + "\n文字内容是:\n" + original_article + "\n回答的内容请用中文"
+
+    response = ""
+    if use_proxy:
+        proxy = os.environ.get('PROXY')
+    if api_cb:
+        try:
+            openai_key = env_data['KEY']
+            can_use_gpt4 = env_data['CAN_USE_GPT_4']
+            if not can_use_gpt4:
+                if ai_model.startswith('gpt-4'):
+                    print(f'抱歉，您目前还不可用gpt4的模型,将自动转换为gpt-3.5模型')
+                    if ai_model == 'gpt-4-0613':
+                        ai_model = 'gpt-3.5-turbo-0613'
+                    elif ai_model == 'gpt-4-32k-0613':
+                        ai_model = 'gpt-3.5-turbo-16k-0613'
+            chatbot = ChatbotV3(api_key=openai_key, proxy=proxy if (proxy != "" or proxy is not None) else None, engine=ai_model,
+                                temperature=0.5)
+            chatbot.reset()
             response = chatbot.ask(prompt=prompt)
         except Exception as error:
             print(f"Error: {error}")
@@ -2676,6 +2745,13 @@ def composite_draft(images_folder, key_frames_type, images_index, cb_input_audio
     return gr.update(interactive=True)
 
 
+def change_is_show(is_checked):
+    if is_checked:
+        return gr.update(visible=True)
+    else:
+        return gr.update(visible=False)
+
+
 class Script(scripts.Script):
 
     def title(self):
@@ -2787,7 +2863,27 @@ class Script(scripts.Script):
                     value=""
                 )
                 with gr.Accordion(label="3.1 AI处理原文"):
-                    ai_prompt = gr.Textbox(label='自行输入AI提示词，一般不需要输入', value='')
+                    with gr.Row():
+                        need_optimization_novel = gr.Checkbox(label='AI优化原文内容，保证文案的唯一性', value=False)
+                        need_self_prompt = gr.Checkbox(label="自行输入指导AI生成场景的提示词，一般不需要输入", value=False)
+                    with gr.Accordion(label="AI优化原文", visible=False) as optimization_novel:
+                        optimization_article = gr.Textbox(
+                            label="AI优化后的原文将显示在这里",
+                            lines=1,
+                            value=""
+                        )
+                        novel_type = gr.Dropdown(label="小说风格", choices=novel_types, value=novel_types[0])
+                        btn_optimization_article = gr.Button(value='AI优化原文')
+
+                    def is_show(is_need):
+                        if is_need:
+                            return gr.update(visible=True)
+                        else:
+                            return gr.update(visible=False)
+
+                    need_optimization_novel.change(is_show, inputs=[need_optimization_novel], outputs=[optimization_novel])
+                    ai_prompt = gr.Textbox(label='指导AI生成场景的提示词', value='', visible=False)
+                    need_self_prompt.change(change_is_show, inputs=[need_self_prompt], outputs=[ai_prompt])
                     scene_number = gr.Number(
                         label="输入要生成的场景数量(若改为0则由AI自动推断文本可转换的场景数量)",
                         value=10,
@@ -2795,12 +2891,13 @@ class Script(scripts.Script):
                     )
                     with gr.Column():
                         with gr.Row():
-                            api_cb = gr.Checkbox(
+                            api_cb_with_ctx = gr.Checkbox(
                                 label="api方式",
                                 value=True
                             )
                             web_cb = gr.Checkbox(
-                                label="web方式"
+                                label="web方式",
+                                value=False
                             )
                             cb_use_proxy = gr.Checkbox(
                                 label="使用代理(一般无需代理)"
@@ -2811,10 +2908,15 @@ class Script(scripts.Script):
                             visible=False,
                             value=True
                         )
-                        api_cb.change(change_state, inputs=[api_cb], outputs=[web_cb])
-                        web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb])
-                        api_cb.change(change_ai_model, inputs=[api_cb, web_cb], outputs=[ai_models])
-                        web_cb.change(change_ai_model, inputs=[api_cb, web_cb], outputs=[ai_models])
+                        api_cb_with_ctx.change(change_state, inputs=[api_cb_with_ctx], outputs=[web_cb])
+                        web_cb.change(change_state, inputs=[web_cb], outputs=[api_cb_with_ctx])
+                        api_cb_with_ctx.change(change_ai_model, inputs=[api_cb_with_ctx, web_cb], outputs=[ai_models])
+                        web_cb.change(change_ai_model, inputs=[api_cb_with_ctx, web_cb], outputs=[ai_models])
+                    btn_optimization_article.click(set_un_clickable, outputs=[btn_optimization_article])
+                    btn_optimization_article.click(ai_optimization_novel,
+                                                   inputs=[original_article, api_cb_with_ctx, cb_use_proxy, ai_models, cb_free, novel_type],
+                                                   outputs=[optimization_article, btn_optimization_article]
+                                                   )
                     preset_character = gr.Dropdown(
                         pc.character_list,
                         label="场景人物预设(仅做展示，自带的预设都没有加入Lora控制，请阅读使用说明书了解如何使用)",
@@ -2850,20 +2952,22 @@ class Script(scripts.Script):
 
                     add_preset.click(add_character_preset, inputs=[custom_preset_title, custom_preset], outputs=[preset_character])
                     ai_article = gr.Textbox(
-                        label="AI处理的推文将显示在这里（建议在每个场景描述后面加入Lora，图片会更好看，人物会更稳定，建议在预设里面加入Lora）",
+                        label="AI生成的场景将显示在这里（建议在每个场景描述后面加入Lora，图片会更好看，人物会更稳定，建议在预设里面加入Lora）",
                         lines=1,
-                        max_lines=6,
                         value=""
                     )
                     with gr.Row():
                         deal_with_ai = gr.Button(value="AI处理推文")
                         btn_save_ai_prompts = gr.Button(value="翻译并保存AI推文")
-                    tb_save_ai_prompts_folder_path = gr.Textbox(
-                        label="请输入推文保存的路径，若为空则保存在outputs/novel_tweets_generator/prompts路径下的按序号递增的文件夹下")
+                    need_self_prompt_save_path = gr.Checkbox(
+                        label='请输入推文保存的路径，若为空则保存在outputs/novel_tweets_generator/prompts路径下的按序号递增的文件夹下')
+                    tb_save_ai_prompts_folder_path = gr.Textbox(show_label=False, visible=False)
+                    need_self_prompt_save_path.change(change_is_show, inputs=[need_self_prompt_save_path], outputs=[tb_save_ai_prompts_folder_path])
 
                     deal_with_ai.click(set_un_clickable, outputs=[deal_with_ai])
                     deal_with_ai.click(ai_process_article,
-                                       inputs=[ai_prompt, original_article, scene_number, api_cb, cb_use_proxy, ai_models, cb_free],
+                                       inputs=[ai_prompt, original_article, scene_number, api_cb_with_ctx, cb_use_proxy, ai_models, cb_free,
+                                               optimization_article, need_optimization_novel],
                                        outputs=[ai_article, deal_with_ai])
                     btn_save_ai_prompts.click(set_un_clickable, outputs=[btn_save_ai_prompts])
                     btn_save_ai_prompts.click(save_prompts, inputs=[ai_article, cb_free, tb_save_ai_prompts_folder_path],
@@ -2893,8 +2997,10 @@ class Script(scripts.Script):
                     voice_radio.change(change_tts, inputs=[voice_radio],
                                        outputs=[voice_role, audition, voice_speed, voice_pit, voice_vol, output_type, voice_emotion,
                                                 voice_emotion_intensity])
-                    voice_save_dir = gr.Textbox(label='语音保存路径',
-                                                placeholder='默认为空时保存在outputs/novel_tweets_generator/audio路径下的按序号递增的文件夹下')
+                    need_self_voice_save_path = gr.Checkbox(
+                        label='请输入语音保存路径，若为空则保存在outputs/novel_tweets_generator/audio 路径下的按序号递增的文件夹下')
+                    voice_save_dir = gr.Textbox(show_label=False, visible=False)
+                    need_self_voice_save_path.change(change_is_show, inputs=[need_self_voice_save_path], outputs=[voice_save_dir])
                     btn_txt_to_voice = gr.Button(value="原文转语音")
                     btn_txt_to_voice.click(set_un_clickable, outputs=[btn_txt_to_voice])
                     btn_txt_to_voice.click(tts_fun,
@@ -2915,8 +3021,8 @@ class Script(scripts.Script):
                 )
                 gr.HTML("6. 生成图片类型")
                 with gr.Row():
-                    cb_h = gr.Checkbox(label='竖图', info="尺寸为576*1024，即9:16的比例")
-                    cb_w = gr.Checkbox(label='横图', info="尺寸为1024*576，即16:9的比例")
+                    cb_h = gr.Checkbox(label='竖图', info="尺寸为576*1024，即9:16的比例", value=False)
+                    cb_w = gr.Checkbox(label='横图', info="尺寸为1024*576，即16:9的比例", value=False)
                     cb_custom = gr.Checkbox(label='自定义尺寸(sd默认尺寸512*512即1:1,请保持1:1)',
                                             info="勾选后请在sd的图片尺寸位置自行输入尺寸", value=True)
                     cb_h.select(change_selected, inputs=[cb_h], outputs=[cb_w, cb_custom])
@@ -2955,8 +3061,11 @@ class Script(scripts.Script):
 
                     set_jydf_btn.click(set_jydf, inputs=[jianying_draft_folder], outputs=[set_view])
                     jianying_draft_folder.change(check, inputs=[jianying_draft_folder], outputs=[set_view])
-                draft_images = gr.Textbox(label='图片文件夹路径',
-                                          placeholder='默认为空时处理outputs/novel_tweets_generator/images/当前日期/最后一个文件夹/original_images/下的图片文件')
+                need_self_draft_images_path = gr.Checkbox(
+                    label='默认为空时处理outputs/novel_tweets_generator/images/当前日期/最后一个文件夹/original_images/下的图片文件')
+                draft_images = gr.Textbox(show_label=False, visible=False)
+                need_self_draft_images_path.change(change_is_show, inputs=[need_self_draft_images_path], outputs=[draft_images])
+
                 with gr.Row():
                     key_frames_type = gr.Dropdown(
                         label='图片关键帧类型',
@@ -3045,7 +3154,7 @@ class Script(scripts.Script):
                 text_watermark, text_watermark_font, text_watermark_target,
                 text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path,
                 default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article,
-                ai_prompt, scene_number, deal_with_ai, ai_article, preset_character, api_cb, web_cb, btn_save_ai_prompts,
+                ai_prompt, scene_number, deal_with_ai, ai_article, preset_character, api_cb_with_ctx, web_cb, btn_save_ai_prompts,
                 tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
                 voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images,
                 custom_preset_title, custom_preset, add_preset, ai_models, voice_save_dir, cb_free, cb_pay, start_image_num]
@@ -3053,10 +3162,10 @@ class Script(scripts.Script):
     def run(self, p, active_code, ensure_sign_up, active_info, prompt_txt, max_frames, prompts_folder, save_or, text_watermark, text_watermark_font,
             text_watermark_target, text_watermark_pos, text_watermark_color, text_watermark_size, text_watermark_content, custom_font, text_font_path,
             default_prompt_type, need_default_prompt, need_negative_prompt, need_combine_prompt, combine_prompt_type, original_article, ai_prompt,
-            scene_number, deal_with_ai, ai_article, preset_character, api_cb, web_cb, btn_save_ai_prompts, tb_save_ai_prompts_folder_path,
-            cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit, voice_vol, audition,
-            btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images, custom_preset_title, custom_preset,
-            add_preset, ai_models, voice_save_dir, cb_free, cb_pay, start_image_num):
+            scene_number, deal_with_ai, ai_article, preset_character, api_cb_with_ctx, web_cb, btn_save_ai_prompts,
+            tb_save_ai_prompts_folder_path, cb_use_proxy, cb_trans_prompt, cb_w, cb_h, cb_custom, voice_radio, voice_role, voice_speed, voice_pit,
+            voice_vol, audition, btn_txt_to_voice, output_type, voice_emotion, voice_emotion_intensity, lora_name, batch_images, custom_preset_title,
+            custom_preset, add_preset, ai_models, voice_save_dir, cb_free, cb_pay, start_image_num):
         p.do_not_save_grid = True
         # here the logic for saving images in the original sd is disabled
         p.do_not_save_samples = True

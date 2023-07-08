@@ -32,6 +32,8 @@ env_data = {
     'DEEPL_API_KEY': '',
     # 是否是 gpt的plus用户，默认False
     'IS_AI_PLUS': False,
+    # 是否可用GPT4的api
+    'CAN_USE_GPT_4': False,
 }
 
 
