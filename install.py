@@ -22,14 +22,18 @@ with open(req_file) as file:
         try:
             package = package.strip()
             package_name = package.split('==')[0] if '==' in package else package
+            package_version = package.split('==')[1] if '==' in package else '0.0.0'
             installed_version = pkg_resources.get_distribution(package_name).version
             latest_version = get_pypi_package_latest_version(package_name)
-
-            if latest_version is not None and installed_version != latest_version:
-                launch.run_pip(f"install --upgrade {package_name}",
-                               f"batch_draw requirement: changing {package_name} version from {installed_version} to {latest_version}")
-            elif not launch.is_installed(package):
-                launch.run_pip(f"install --upgrade {package}", f"batch_draw requirement: {package}")
+            if '==' in package:
+                if package_version != installed_version:
+                    launch.run_pip(f"install {package}", f"batch_draw requirement: {package}")
+            else:
+                if latest_version is not None and installed_version != latest_version:
+                    launch.run_pip(f"install --upgrade {package_name}",
+                                   f"batch_draw requirement: changing {package_name} version from {installed_version} to {latest_version}")
+                elif not launch.is_installed(package):
+                    launch.run_pip(f"install --upgrade {package}", f"batch_draw requirement: {package}")
         except Exception as e:
             print(e)
             print(f"Warning: Failed to install {package}, some functions may not work.")
